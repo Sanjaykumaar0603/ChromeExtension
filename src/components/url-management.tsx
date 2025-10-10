@@ -83,39 +83,33 @@ export function UrlManagement() {
       [id]: { status: 'pending', message: 'Pinging...' },
     }));
 
-    const results: (number | null)[] = [];
-    for (let i = 0; i < 5; i++) {
-      const start = performance.now();
-      try {
-        await fetch(url, { method: 'HEAD', cache: 'no-store', mode: 'no-cors' });
-        results.push(performance.now() - start);
-      } catch (err) {
-        results.push(null);
-      }
-    }
+    const start = performance.now();
+    try {
+      // Use a more reliable endpoint for checking status that allows CORS
+      await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store'});
+      const duration = performance.now() - start;
 
-    const successPings = results.filter((r) => r !== null) as number[];
-
-    let result: PingResult;
-    if (successPings.length === 0) {
-      result = { status: 'error', message: 'Site is not responding' };
-    } else {
-      const avg =
-        successPings.reduce((a, b) => a + b, 0) / successPings.length;
-      if (avg > 2000) {
+      let result: PingResult;
+      if (duration > 2000) {
         result = {
           status: 'slow',
-          message: `Slow response (~${Math.round(avg)}ms)`,
+          message: `Slow response (~${Math.round(duration)}ms)`,
         };
       } else {
         result = {
           status: 'success',
-          message: `Avg: ${Math.round(avg)}ms (${successPings.length}/5)`,
+          message: `Responded in ~${Math.round(duration)}ms`,
         };
       }
+      setPingResults((prev) => ({ ...prev, [id]: result }));
+    } catch (err) {
+      setPingResults((prev) => ({
+        ...prev,
+        [id]: { status: 'error', message: 'Site is not responding' },
+      }));
     }
 
-    setPingResults((prev) => ({ ...prev, [id]: result }));
+
     setPinging((prev) => ({ ...prev, [id]: false }));
   };
 
