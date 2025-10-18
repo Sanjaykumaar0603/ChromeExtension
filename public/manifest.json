@@ -4,19 +4,16 @@
   "version": "1.0",
   "description": "A personal dashboard for web privacy and utility.",
   "action": {
-    "default_popup": "index.html"
+    "default_popup": "popup.html"
   },
   "permissions": [
     "activeTab",
-    "scripting",
     "storage",
+    "unlimitedStorage",
     "tabs",
-    "http://localhost:9002/*"
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"
-  ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self' http://localhost:9002; object-src 'self'"
-  }
+  ]
 }
