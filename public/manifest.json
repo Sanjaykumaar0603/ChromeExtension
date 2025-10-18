@@ -1,8 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "Smart Privacy Extension",
+  "name": "Smart Privacy",
   "version": "1.0",
-  "description": "Manage your privacy settings for microphone and camera.",
+  "description": "Your personal dashboard for web privacy and utility.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "unlimitedStorage"
+  ],
   "action": {
     "default_popup": "index.html",
     "default_icon": {
@@ -15,11 +22,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "storage",
-    "tabs"
-  ]
+  }
 }
