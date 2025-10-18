@@ -1,19 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "Smart Privacy Extension",
+  "name": "Smart Privacy",
   "version": "1.0",
-  "description": "A personal dashboard for web privacy and utility.",
+  "description": "A smart privacy extension.",
   "action": {
     "default_popup": "popup.html"
   },
   "permissions": [
     "activeTab",
-    "storage",
-    "unlimitedStorage",
-    "tabs",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "host_permissions": [
-    "<all_urls>"
-  ]
+    "http://localhost:9002/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; script-src-elem 'self' 'unsafe-inline' http://localhost:9002/;"
+  }
 }
