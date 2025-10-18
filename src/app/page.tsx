@@ -12,8 +12,8 @@ import { ShieldCheck } from 'lucide-react';
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 sm:p-8">
-      <Card className="w-full max-w-2xl mx-auto shadow-2xl bg-card">
+    <main className="flex flex-col items-center justify-start bg-background p-4 w-[400px]">
+      <Card className="w-full max-w-2xl mx-auto shadow-none bg-card border-0">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-3">
             <ShieldCheck className="h-8 w-8 text-primary" />
