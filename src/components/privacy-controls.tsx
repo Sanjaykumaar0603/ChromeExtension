@@ -41,6 +41,15 @@ export function PrivacyControls() {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const setMicMutedState = (muted: boolean) => {
+    if (micStreamRef.current) {
+      micStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !muted;
+      });
+      setMicStatus(muted ? 'muted' : 'listening');
+    }
+  };
+
   const processAudioChunk = useCallback(
     async (event: BlobEvent) => {
       const audioBlob = event.data;
@@ -59,7 +68,7 @@ export function PrivacyControls() {
             voiceDetectionThreshold: sensitivity[0],
             muteDuration: muteDuration,
           });
-          setMicStatus(result.shouldMute ? 'muted' : 'listening');
+          setMicMutedState(result.shouldMute);
         } catch (error) {
           console.error('AI audio analysis failed:', error);
           toast({
@@ -79,9 +88,13 @@ export function PrivacyControls() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micStreamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = recorder;
+
+      // When data is available, process the audio chunk
       recorder.ondataavailable = processAudioChunk;
+
+      // Start recording and capture a chunk every `muteDuration` seconds
       recorder.start(muteDuration * 1000);
 
       setMicStatus('listening');
