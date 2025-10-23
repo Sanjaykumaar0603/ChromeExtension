@@ -42,11 +42,20 @@ export function PrivacyControls() {
   
   // Effect to manage the connection to the background script
   useEffect(() => {
-    if (typeof window.chrome === 'undefined' || !window.chrome.runtime) {
-      return;
+    // Check if we are in a chrome extension context
+    if (typeof window.chrome === 'undefined' || !window.chrome.runtime || !window.chrome.runtime.connect) {
+        // We are not in an extension context, so we can't connect.
+        return;
     }
 
-    portRef.current = chrome.runtime.connect({ name: "privacyControls" });
+    try {
+        portRef.current = chrome.runtime.connect({ name: "privacyControls" });
+    } catch (e) {
+        console.error("Could not connect to extension background:", e);
+        toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background. Is the extension installed and enabled?' });
+        return;
+    }
+
 
     const handleMessage = (message: any) => {
       if (message.action === 'updateStatus') {
@@ -72,17 +81,17 @@ export function PrivacyControls() {
   
   // Effect to handle mic enabled/disabled toggle
   useEffect(() => {
-    if (portRef.current) {
-      if (micEnabled) {
-        portRef.current.postMessage({ action: 'startMicMonitoring' });
-        setMicStatus('listening');
-      } else {
-        portRef.current.postMessage({ action: 'stopMicMonitoring' });
-        setMicStatus('off');
-      }
-    } else if (micEnabled && (typeof window.chrome === 'undefined' || !window.chrome.runtime)) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background.' });
-        setMicEnabled(false);
+    if (micEnabled) {
+        if (portRef.current) {
+            portRef.current.postMessage({ action: 'startMicMonitoring' });
+        } else if (typeof window.chrome === 'undefined' || !window.chrome.runtime) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background. This feature only works inside the installed Chrome Extension.' });
+            setMicEnabled(false);
+        }
+    } else {
+        if (portRef.current) {
+            portRef.current.postMessage({ action: 'stopMicMonitoring' });
+        }
     }
   }, [micEnabled, toast]);
 
