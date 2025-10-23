@@ -18,20 +18,11 @@ import { useToast } from '@/hooks/use-toast';
 import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
 import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
 
-declare global {
-  interface Window {
-    chrome: any;
-  }
-}
-
 export function PrivacyControls() {
   const { toast } = useToast();
-  const portRef = useRef<any>(null);
 
   // Mic state
   const [micEnabled, setMicEnabled] = useState(false);
-  const [sensitivity, setSensitivity] = useState([0.5]);
-  const [muteDuration, setMuteDuration] = useState(5);
   const [micStatus, setMicStatus] = useState<'listening' | 'muted' | 'off' | 'analyzing'>('off');
 
   // Camera state
@@ -41,60 +32,44 @@ export function PrivacyControls() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Effect to manage the connection to the background script
+
+  // Establish connection with the background script
   useEffect(() => {
     // Check if we are in a chrome extension context
-    if (typeof window.chrome === 'undefined' || !window.chrome.runtime || !window.chrome.runtime.connect) {
-        console.log("Not in an extension context.");
+    if (typeof window.chrome === 'undefined' || !window.chrome.runtime || !window.chrome.runtime.id) {
+        console.log("Not in a valid extension context.");
         return;
     }
 
-    const extensionId = process.env.NEXT_PUBLIC_EXTENSION_ID;
-    if (!extensionId || extensionId === 'YOUR_EXTENSION_ID_HERE') {
-        toast({ variant: 'destructive', title: 'Configuration Error', description: 'Extension ID is not set. Please add it to your .env file.' });
-        console.error("Extension ID not set. Please set NEXT_PUBLIC_EXTENSION_ID in your .env file.");
-        return;
-    }
+    const port = chrome.runtime.connect({ name: "privacyControls" });
 
-    try {
-        portRef.current = chrome.runtime.connect(extensionId, { name: "privacyControls" });
-    } catch (e) {
-        console.error("Could not connect to extension background:", e);
-        toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background. Is the extension installed and enabled?' });
-        return;
-    }
-
-
-    const handleMessage = (message: any) => {
-      if (message.action === 'updateStatus') {
+    port.onMessage.addListener((message) => {
+      if (message.action === 'updateMicStatus') {
         setMicStatus(message.status);
-      }
-    };
-
-    portRef.current.onMessage.addListener(handleMessage);
-
-    return () => {
-      if (portRef.current) {
-        portRef.current.disconnect();
-        portRef.current = null;
-      }
-    };
-  }, [toast]);
-  
-  // Effect to handle mic enabled/disabled toggle
-  useEffect(() => {
-    if (portRef.current) {
-        if (micEnabled) {
-            portRef.current.postMessage({ action: 'startMicMonitoring', sensitivity: sensitivity[0], muteDuration });
-        } else {
-            portRef.current.postMessage({ action: 'stopMicMonitoring' });
+        if (message.status === 'off' && micEnabled) {
+          setMicEnabled(false);
         }
-    } else if (micEnabled) {
-        toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background.' });
-        setMicEnabled(false);
+      }
+    });
+
+    // When the UI is closed, tell the background script
+    return () => {
+      port.disconnect();
+    };
+  }, [micEnabled]);
+
+
+  const handleMicToggle = (enabled: boolean) => {
+    setMicEnabled(enabled);
+    if (typeof window.chrome !== 'undefined' && window.chrome.runtime && window.chrome.runtime.id) {
+      chrome.runtime.sendMessage({
+        action: enabled ? 'startMicMonitoring' : 'stopMicMonitoring',
+      });
+    } else if (enabled) {
+      toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background.' });
+      setMicEnabled(false);
     }
-  }, [micEnabled, sensitivity, muteDuration, toast]);
+  };
 
 
   const captureFrame = useCallback(() => {
@@ -207,7 +182,7 @@ export function PrivacyControls() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Auto-Mute Microphone</CardTitle>
-            <Switch checked={micEnabled} onCheckedChange={setMicEnabled} />
+            <Switch checked={micEnabled} onCheckedChange={handleMicToggle} />
           </div>
           <CardDescription>
             Mute your mic automatically when no voice is detected in the current tab.
@@ -221,8 +196,7 @@ export function PrivacyControls() {
               min={0.1}
               max={1}
               step={0.1}
-              value={sensitivity}
-              onValueChange={setSensitivity}
+              defaultValue={[0.5]}
               disabled={!micEnabled}
             />
           </div>
@@ -232,8 +206,7 @@ export function PrivacyControls() {
               id="mute-duration"
               type="number"
               min="1"
-              value={muteDuration}
-              onChange={(e) => setMuteDuration(Number(e.target.value))}
+              defaultValue={5}
               disabled={!micEnabled}
             />
           </div>
@@ -300,5 +273,4 @@ export function PrivacyControls() {
       </Card>
     </div>
   );
-
-    
+}

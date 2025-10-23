@@ -1,92 +1,188 @@
-// This script runs in the background and handles all the heavy lifting.
+// This is the background script for the extension.
+// It is responsible for handling the microphone monitoring and communication with the AI.
 
-let port = null;
-let mediaStream = null;
-let audioProcessor = null;
+// Global state for the background script
+let micStream;
+let audioProcessor;
+let mediaRecorder;
+let silenceTimer;
 let isMuted = false;
+let isMonitoring = false;
+let uiPort;
 
-// Listen for connections from our popup
-chrome.runtime.onConnect.addListener((p) => {
-  port = p;
+const MUTE_DELAY = 5000; // 5 seconds of silence before muting
 
-  // When the popup connects, send the current status
-  port.postMessage({ action: 'updateStatus', status: isMuted ? 'muted' : (mediaStream ? 'listening' : 'off') });
+// Function to send status updates to the UI
+function updateUiStatus(status) {
+  if (uiPort) {
+    uiPort.postMessage({ action: 'updateMicStatus', status });
+  }
+}
 
-  port.onMessage.addListener((message) => {
-    if (message.action === 'startMicMonitoring') {
-      startMonitoring();
-    } else if (message.action === 'stopMicMonitoring') {
-      stopMonitoring();
+// Function to start monitoring the microphone
+async function startMicMonitoring() {
+  if (isMonitoring) return;
+  console.log('Starting microphone monitoring...');
+
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!activeTab) {
+      console.error('No active tab found.');
+      updateUiStatus('off');
+      return;
     }
-  });
 
-  port.onDisconnect.addListener(() => {
-    port = null;
-    // Don't stop monitoring on disconnect, allow it to run in the background
-  });
+    micStream = await chrome.tabCapture.capture({
+      audio: true,
+      video: false,
+    });
+
+    isMonitoring = true;
+    updateUiStatus('listening');
+
+    // Mute the tab immediately to prevent feedback loop
+    chrome.tabs.update(activeTab.id, { muted: true });
+
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(micStream);
+    
+    // We don't need a processor node if we use MediaRecorder
+    // audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+    // source.connect(audioProcessor);
+    // audioProcessor.onaudioprocess = handleAudioProcess;
+
+    mediaRecorder = new MediaRecorder(micStream);
+    mediaRecorder.ondataavailable = handleDataAvailable;
+    mediaRecorder.start(1000); // Collect 1-second chunks of audio
+
+    isMuted = false;
+    resetSilenceTimer();
+
+  } catch (error) {
+    console.error('Error starting mic monitoring:', error);
+    stopMicMonitoring(); // Clean up on error
+  }
+}
+
+// Function to stop monitoring the microphone
+function stopMicMonitoring() {
+  console.log('Stopping microphone monitoring...');
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  if(silenceTimer) {
+    clearTimeout(silenceTimer);
+    silenceTimer = null;
+  }
+  micStream?.getTracks().forEach((track) => track.stop());
+  // audioProcessor?.disconnect();
+
+  micStream = null;
+  // audioProcessor = null;
+  mediaRecorder = null;
+  isMonitoring = false;
+  isMuted = false;
+  updateUiStatus('off');
+}
+
+// Handles incoming audio data from MediaRecorder
+async function handleDataAvailable(event) {
+  if (event.data.size > 0) {
+    updateUiStatus('analyzing');
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result;
+      try {
+        const response = await fetch('http://localhost:9002/api/genkit/flows/analyzeAudioAndMute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            audioDataUri: base64String,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`AI flow failed with status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        handleAiResult(result.voiceDetected);
+      } catch (error) {
+        console.error('Error sending audio to AI:', error);
+        // If AI fails, assume voice is present to be safe
+        handleAiResult(true);
+      }
+    };
+    reader.readAsDataURL(event.data);
+  }
+}
+
+
+// Handles the result from the AI analysis
+function handleAiResult(voiceDetected) {
+  if (voiceDetected) {
+    console.log('Voice detected.');
+    // If voice is detected, unmute and reset the silence timer
+    if (isMuted) {
+      setMuteState(false);
+    }
+    resetSilenceTimer();
+    updateUiStatus('listening');
+  } else {
+    console.log('Silence detected.');
+    // If silence is detected, the timer is already running.
+    // We just update the status to show it's listening.
+    if(!isMuted) {
+       updateUiStatus('listening');
+    }
+  }
+}
+
+// Resets the timer that triggers muting after a period of silence
+function resetSilenceTimer() {
+  if (silenceTimer) {
+    clearTimeout(silenceTimer);
+  }
+  silenceTimer = setTimeout(() => {
+    console.log('Silence timer expired. Muting.');
+    setMuteState(true);
+  }, MUTE_DELAY);
+}
+
+// Sets the mute state of the captured audio stream
+function setMuteState(shouldMute) {
+  if (micStream && isMonitoring) {
+    micStream.getAudioTracks().forEach((track) => {
+      track.enabled = !shouldMute;
+    });
+    isMuted = shouldMute;
+    if(shouldMute) {
+        updateUiStatus('muted');
+    } else {
+        updateUiStatus('listening');
+    }
+  }
+}
+
+
+// Listen for messages from the popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'startMicMonitoring') {
+    startMicMonitoring();
+  } else if (message.action === 'stopMicMonitoring') {
+    stopMicMonitoring();
+  }
+  return true; // Indicates an async response
 });
 
-
-function startMonitoring() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs || tabs.length === 0) {
-      if (port) port.postMessage({ action: 'captureError', message: 'Could not find active tab.' });
-      return;
+// Listen for connections from the UI
+chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === 'privacyControls') {
+        uiPort = port;
+        // Send initial status when UI connects
+        updateUiStatus(isMonitoring ? (isMuted ? 'muted' : 'listening') : 'off');
+        port.onDisconnect.addListener(() => {
+            uiPort = null;
+        });
     }
-    const targetTab = tabs[0];
-    if (targetTab.id === undefined) {
-      if (port) port.postMessage({ action: 'captureError', message: 'Target tab has no ID.' });
-      return;
-    }
-
-    chrome.tabCapture.capture({ audio: true, video: false }, (stream) => {
-      if (chrome.runtime.lastError || !stream) {
-        if (port) port.postMessage({ action: 'captureError', message: chrome.runtime.lastError?.message || 'Unknown capture error' });
-        return;
-      }
-      
-      mediaStream = stream;
-      isMuted = false;
-      if (port) {
-         port.postMessage({ action: 'captureSuccess' });
-         port.postMessage({ action: 'updateStatus', status: 'listening' });
-      }
-
-      // The audio stream is muted by default, we need to unmute it.
-      const audioTracks = mediaStream.getAudioTracks();
-      if (audioTracks.length > 0) {
-        audioTracks[0].enabled = true; 
-      }
-      
-      // We don't need to do any AI processing for this version.
-      // The goal is just to mute/unmute the tab's stream.
-      // We'll add the AI part back in later.
-
-      mediaStream.oninactive = () => {
-        stopMonitoring();
-      };
-    });
-  });
-}
-
-function stopMonitoring() {
-  if (mediaStream) {
-    mediaStream.getTracks().forEach(track => track.stop());
-    mediaStream = null;
-  }
-  isMuted = false;
-  if (port) port.postMessage({ action: 'updateStatus', status: 'off' });
-}
-
-// This is a placeholder for the AI logic to decide when to mute.
-// For now, we are not using it.
-function setMicMuted(shouldMute) {
-  if (mediaStream && mediaStream.getAudioTracks().length > 0) {
-    const wasMuted = isMuted;
-    isMuted = shouldMute;
-    mediaStream.getAudioTracks()[0].enabled = !shouldMute;
-    if (wasMuted !== isMuted) {
-      if(port) port.postMessage({ action: 'updateStatus', status: isMuted ? 'muted' : 'listening' });
-    }
-  }
-}
+});

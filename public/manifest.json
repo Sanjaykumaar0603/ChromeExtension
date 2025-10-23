@@ -2,19 +2,28 @@
   "manifest_version": 3,
   "name": "Smart Privacy",
   "version": "1.0",
-  "description": "Your personal dashboard for web privacy and utility.",
-  "permissions": ["storage", "activeTab", "tabCapture"],
-  "host_permissions": ["http://localhost:9002/"],
-  "background": {
-    "service_worker": "background.js"
-  },
+  "description": "A smart privacy assistant for your browser.",
+  "permissions": [
+    "activeTab",
+    "tabCapture",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:9002/*"
+  ],
   "action": {
     "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self' http://localhost:9002; object-src 'self'"
   },
-  "externally_connectable": {
-    "matches": ["http://localhost:9002/*"]
-  }
+  "web_accessible_resources": [
+    {
+      "resources": ["/logo.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
