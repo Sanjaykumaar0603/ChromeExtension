@@ -46,11 +46,11 @@ export function PrivacyControls() {
   const cameraIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const setMicMutedState = useCallback((shouldMute: boolean) => {
-    if (typeof window.chrome !== 'undefined' && window.chrome.runtime) {
+    if (typeof window.chrome !== 'undefined' && window.chrome.runtime?.sendMessage) {
       window.chrome.runtime.sendMessage({ action: 'setMicMuted', muted: shouldMute }, (response: any) => {
         if (chrome.runtime.lastError) {
-            // Handle error if the background script is not available
             console.error(chrome.runtime.lastError.message);
+            // Don't toast here, as it can be noisy if the background is just busy.
             return;
         }
         if (response?.success) {
