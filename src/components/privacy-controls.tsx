@@ -16,6 +16,7 @@ import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
+import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
 
 declare global {
   interface Window {
@@ -39,17 +40,25 @@ export function PrivacyControls() {
   const [cameraStatus, setCameraStatus] = useState<'on' | 'off' | 'analyzing'>('off');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Effect to manage the connection to the background script
   useEffect(() => {
     // Check if we are in a chrome extension context
     if (typeof window.chrome === 'undefined' || !window.chrome.runtime || !window.chrome.runtime.connect) {
-        // We are not in an extension context, so we can't connect.
+        console.log("Not in an extension context.");
+        return;
+    }
+
+    const extensionId = process.env.NEXT_PUBLIC_EXTENSION_ID;
+    if (!extensionId || extensionId === 'YOUR_EXTENSION_ID_HERE') {
+        toast({ variant: 'destructive', title: 'Configuration Error', description: 'Extension ID is not set. Please add it to your .env file.' });
+        console.error("Extension ID not set. Please set NEXT_PUBLIC_EXTENSION_ID in your .env file.");
         return;
     }
 
     try {
-        portRef.current = chrome.runtime.connect({ name: "privacyControls" });
+        portRef.current = chrome.runtime.connect(extensionId, { name: "privacyControls" });
     } catch (e) {
         console.error("Could not connect to extension background:", e);
         toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background. Is the extension installed and enabled?' });
@@ -60,12 +69,6 @@ export function PrivacyControls() {
     const handleMessage = (message: any) => {
       if (message.action === 'updateStatus') {
         setMicStatus(message.status);
-      } else if (message.action === 'captureError') {
-        toast({ variant: 'destructive', title: 'Capture Error', description: message.message });
-        setMicEnabled(false);
-        setMicStatus('off');
-      } else if (message.action === 'captureSuccess') {
-         toast({ title: 'Success', description: 'Microphone monitoring started.' });
       }
     };
 
@@ -81,27 +84,53 @@ export function PrivacyControls() {
   
   // Effect to handle mic enabled/disabled toggle
   useEffect(() => {
-    if (micEnabled) {
-        if (portRef.current) {
-            portRef.current.postMessage({ action: 'startMicMonitoring' });
-        } else if (typeof window.chrome === 'undefined' || !window.chrome.runtime) {
-            toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background. This feature only works inside the installed Chrome Extension.' });
-            setMicEnabled(false);
-        }
-    } else {
-        if (portRef.current) {
+    if (portRef.current) {
+        if (micEnabled) {
+            portRef.current.postMessage({ action: 'startMicMonitoring', sensitivity: sensitivity[0], muteDuration });
+        } else {
             portRef.current.postMessage({ action: 'stopMicMonitoring' });
         }
+    } else if (micEnabled) {
+        toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background.' });
+        setMicEnabled(false);
     }
-  }, [micEnabled, toast]);
+  }, [micEnabled, sensitivity, muteDuration, toast]);
 
 
-  // --- Camera Logic (remains in the component as it uses browser APIs) ---
+  const captureFrame = useCallback(() => {
+    if (!videoRef.current || !videoRef.current.srcObject) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg');
+  }, []);
 
   const analyzeCameraFeed = useCallback(async () => {
-    // This logic stays here because it relies on browser APIs (canvas, etc) that are fine in the popup.
-    // The Genkit flow call is also fine here as it's just an async fetch.
-  }, []);
+    const frame = captureFrame();
+    if (!frame) return;
+
+    setCameraStatus('analyzing');
+    try {
+      const result = await detectPersonAndTurnOffCamera({
+        videoDataUri: frame,
+        loggedInPersonDescription: personDescription,
+      });
+
+      if (!result.personDetected) {
+        toast({ title: 'Privacy Alert', description: 'You are not in the frame. Turning off camera.' });
+        setCameraEnabled(false); // This will trigger the cleanup effect
+      } else {
+         setCameraStatus('on');
+      }
+    } catch (error) {
+      console.error('Error analyzing camera feed:', error);
+      toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
+      setCameraStatus('on');
+    }
+  }, [captureFrame, personDescription, toast]);
 
   const startCameraMonitoring = useCallback(async () => {
     try {
@@ -111,6 +140,8 @@ export function PrivacyControls() {
         videoRef.current.srcObject = stream;
       }
       setCameraStatus('on');
+      // Start analysis interval
+      analysisIntervalRef.current = setInterval(analyzeCameraFeed, 5000); // Analyze every 5 seconds
     } catch (err) {
       console.error('Error accessing camera:', err);
       toast({
@@ -120,9 +151,15 @@ export function PrivacyControls() {
       });
       setCameraEnabled(false);
     }
-  }, [toast]);
+  }, [toast, analyzeCameraFeed]);
 
   const stopCameraMonitoring = useCallback(() => {
+    // Stop analysis interval
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
+      analysisIntervalRef.current = null;
+    }
+    // Stop camera stream
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current = null;
     if (videoRef.current) {
