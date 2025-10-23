@@ -24,6 +24,7 @@ export function PrivacyControls() {
   // Mic state
   const [micEnabled, setMicEnabled] = useState(false);
   const [micStatus, setMicStatus] = useState<'listening' | 'muted' | 'off' | 'analyzing'>('off');
+  const [isMicMuted, setIsMicMuted] = useState(false);
 
   // Camera state
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -33,43 +34,83 @@ export function PrivacyControls() {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Establish connection with the background script
-  useEffect(() => {
-    // Check if we are in a chrome extension context
-    if (typeof window.chrome === 'undefined' || !window.chrome.runtime || !window.chrome.runtime.id) {
-        console.log("Not in a valid extension context.");
-        return;
-    }
-
-    const port = chrome.runtime.connect({ name: "privacyControls" });
-
-    port.onMessage.addListener((message) => {
-      if (message.action === 'updateMicStatus') {
-        setMicStatus(message.status);
-        if (message.status === 'off' && micEnabled) {
-          setMicEnabled(false);
-        }
-      }
-    });
-
-    // When the UI is closed, tell the background script
-    return () => {
-      port.disconnect();
-    };
-  }, [micEnabled]);
-
-
+  // Mic Toggle
   const handleMicToggle = (enabled: boolean) => {
     setMicEnabled(enabled);
-    if (typeof window.chrome !== 'undefined' && window.chrome.runtime && window.chrome.runtime.id) {
-      chrome.runtime.sendMessage({
-        action: enabled ? 'startMicMonitoring' : 'stopMicMonitoring',
-      });
-    } else if (enabled) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Cannot connect to extension background.' });
-      setMicEnabled(false);
+    if (!enabled) {
+      setMicStatus('off');
+      setIsMicMuted(false);
+    } else {
+      setMicStatus('listening');
     }
   };
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let audioContext: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startMonitoring = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioContext = new AudioContext();
+        analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyser.fftSize = 512;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        let silenceStart = Date.now();
+
+        intervalId = setInterval(() => {
+          analyser?.getByteTimeDomainData(dataArray);
+          const isSilent = dataArray.every(v => v === 128);
+
+          if (!isSilent) {
+            silenceStart = Date.now();
+            if (isMicMuted) {
+              setIsMicMuted(false);
+              setMicStatus('listening');
+            }
+          } else {
+            const silenceDuration = Date.now() - silenceStart;
+            if (silenceDuration > 5000 && !isMicMuted) { // 5 seconds of silence
+              setIsMicMuted(true);
+              setMicStatus('muted');
+            }
+          }
+        }, 100);
+
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+        toast({ variant: 'destructive', title: 'Mic Error', description: 'Could not access microphone.' });
+        setMicEnabled(false);
+      }
+    };
+
+    const stopMonitoring = () => {
+      if (intervalId) clearInterval(intervalId);
+      stream?.getTracks().forEach(track => track.stop());
+      audioContext?.close();
+    };
+
+    if (micEnabled) {
+      startMonitoring();
+    } else {
+      stopMonitoring();
+    }
+
+    return () => stopMonitoring();
+  }, [micEnabled, isMicMuted, toast]);
+
+  useEffect(() => {
+    if (cameraStreamRef.current) {
+        cameraStreamRef.current.getAudioTracks().forEach(track => {
+            track.enabled = !isMicMuted;
+        });
+    }
+  }, [isMicMuted]);
 
 
   const captureFrame = useCallback(() => {
