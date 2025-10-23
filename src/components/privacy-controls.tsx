@@ -45,14 +45,18 @@ export function PrivacyControls() {
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const cameraIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const setMicMutedState = useCallback((muted: boolean) => {
-    // Send a message to the background script to mute/unmute the captured audio track
+  const setMicMutedState = useCallback((shouldMute: boolean) => {
     if (typeof window.chrome !== 'undefined' && window.chrome.runtime) {
-        window.chrome.runtime.sendMessage({ action: 'setMicMuted', muted }, (response: any) => {
-            if (response?.success) {
-                setMicStatus(muted ? 'muted' : 'listening');
-            }
-        });
+      window.chrome.runtime.sendMessage({ action: 'setMicMuted', muted: shouldMute }, (response: any) => {
+        if (chrome.runtime.lastError) {
+            // Handle error if the background script is not available
+            console.error(chrome.runtime.lastError.message);
+            return;
+        }
+        if (response?.success) {
+          setMicStatus(shouldMute ? 'muted' : 'listening');
+        }
+      });
     }
   }, []);
 
@@ -75,71 +79,67 @@ export function PrivacyControls() {
             title: 'AI Error',
             description: 'Could not analyze audio.',
           });
-          // Restore to listening state on error. Check background script for actual state if possible,
-          // but for now, we assume it's listening if not explicitly muted.
           setMicStatus('listening');
         }
     },
     [sensitivity, muteDuration, toast, setMicMutedState]
   );
 
-  const startMicMonitoring = useCallback(async () => {
-    if (typeof window.chrome === 'undefined' || !window.chrome.runtime) {
-      toast({
-        variant: 'destructive',
-        title: 'Unsupported Environment',
-        description: 'This feature can only be run within a Chrome extension.',
-      });
-      setMicEnabled(false);
-      return;
+  const startMicMonitoring = useCallback(() => {
+    if (typeof window.chrome === 'undefined' || !window.chrome.runtime?.sendMessage) {
+        toast({ variant: "destructive", title: "Error", description: "Cannot connect to extension background." });
+        setMicEnabled(false);
+        return;
     }
-    
-    // Send message to background script to start monitoring
-    window.chrome.runtime.sendMessage(
-        { action: 'startMicMonitoring', config: { muteDuration } },
-        (response: any) => {
-            if (response?.success) {
-                setMicStatus('listening');
-                toast({ title: 'Success', description: 'Microphone monitoring started.' });
-            } else {
-                toast({
-                    variant: 'destructive',
-                    title: 'Capture Error',
-                    description: response?.message || 'Could not start microphone monitoring.',
-                });
-                setMicEnabled(false);
-            }
+    window.chrome.runtime.sendMessage({ action: 'startMicMonitoring' }, (response: any) => {
+        if (chrome.runtime.lastError) {
+             toast({ variant: "destructive", title: "Capture Error", description: chrome.runtime.lastError.message || "Could not start microphone monitoring."});
+             setMicEnabled(false);
+             setMicStatus('off');
+             return;
         }
-    );
-  }, [muteDuration, toast]);
+        if (response?.success) {
+            setMicStatus('listening');
+            toast({ title: 'Success', description: 'Microphone monitoring started.' });
+        } else {
+            toast({ variant: "destructive", title: "Capture Error", description: response?.message || "Could not start microphone monitoring."});
+            setMicEnabled(false);
+            setMicStatus('off');
+        }
+    });
+  }, [toast]);
 
 
   const stopMicMonitoring = useCallback(() => {
-    if (typeof window.chrome === 'undefined' || !window.chrome.runtime) return;
-    
-    // Send message to background script to stop
-    window.chrome.runtime.sendMessage({ action: 'stopMicMonitoring' }, () => {
+    if (typeof window.chrome !== 'undefined' && window.chrome.runtime?.sendMessage) {
+      window.chrome.runtime.sendMessage({ action: 'stopMicMonitoring' }, () => {
+        if (chrome.runtime.lastError) {
+            console.error(chrome.runtime.lastError.message);
+        }
         setMicStatus('off');
-    });
+      });
+    }
   }, []);
 
   // Effect to handle messages from the background script
   useEffect(() => {
     if (typeof window.chrome === 'undefined' || !window.chrome.runtime) return;
 
-    const messageListener = (message: any) => {
+    const messageListener = (message: any, sender: any, sendResponse: any) => {
       if (message.action === 'processAudioChunk' && message.audioDataUri) {
         processAudioChunk(message.audioDataUri);
-      } else if (message.status) {
-        // Update status based on messages from background (e.g. 'off' on tab close)
-        setMicStatus(message.status);
+      } else if (message.action === 'micMonitoringStopped') {
+        setMicStatus('off');
+        setMicEnabled(false);
       }
     };
     
     window.chrome.runtime.onMessage.addListener(messageListener);
     
     return () => {
+      if (window.chrome.runtime.onMessage) {
         window.chrome.runtime.onMessage.removeListener(messageListener);
+      }
     };
 
   }, [processAudioChunk]);
@@ -150,7 +150,6 @@ export function PrivacyControls() {
     } else {
       stopMicMonitoring();
     }
-    // No return cleanup needed here as stopMicMonitoring handles it via message
   }, [micEnabled, startMicMonitoring, stopMicMonitoring]);
 
   const analyzeCameraFeed = useCallback(async () => {

@@ -1,82 +1,75 @@
-// This script runs in the background and has access to Chrome APIs.
+// This script runs in the background and handles all microphone-related logic.
 
+let capturedStream = null;
+let audioProcessorInterval = null;
 let mediaRecorder = null;
-let audioStream = null;
+let lastAudioChunkTime = null;
 
-// Listen for messages from the popup
+// Listen for messages from the popup UI
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startMicMonitoring') {
-    startMicMonitoring(request.config, sendResponse);
-    return true; // Indicates that the response will be sent asynchronously
+    startMicMonitoring(sendResponse);
+    return true; // Indicates that the response is sent asynchronously
   } else if (request.action === 'stopMicMonitoring') {
     stopMicMonitoring();
-    sendResponse({ success: true, message: 'Monitoring stopped.' });
+    sendResponse({ success: true });
   } else if (request.action === 'setMicMuted') {
-    if (audioStream) {
-        audioStream.getAudioTracks().forEach(track => {
-            track.enabled = !request.muted;
-        });
-        sendResponse({ success: true, muted: request.muted });
-    } else {
-        sendResponse({ success: false, message: 'No active stream to mute.' });
+    if (capturedStream) {
+      capturedStream.getAudioTracks().forEach(track => {
+        track.enabled = !request.muted;
+      });
+      sendResponse({ success: true, muted: !capturedStream.getAudioTracks()[0]?.enabled });
     }
   }
 });
 
-function startMicMonitoring(config, sendResponse) {
-  // Can't start if it's already running
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    sendResponse({ success: false, message: 'Already monitoring.' });
-    return;
-  }
-
+function startMicMonitoring(sendResponse) {
+  // Find the currently active tab to capture its audio
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs.length === 0) {
-      sendResponse({ success: false, message: 'No active tab found.' });
+    if (!tabs || tabs.length === 0) {
+      sendResponse({ success: false, message: 'Could not find active tab.' });
       return;
     }
-    const targetTab = tabs[0];
+    const targetTabId = tabs[0].id;
 
     chrome.tabCapture.capture({ audio: true, video: false }, (stream) => {
       if (chrome.runtime.lastError || !stream) {
-        sendResponse({ success: false, message: `Could not capture tab: ${chrome.runtime.lastError?.message}` });
+        console.error("Error capturing tab:", chrome.runtime.lastError?.message);
+        sendResponse({ success: false, message: 'Could not capture tab audio. Is the tab making any sound?' });
         return;
       }
 
-      audioStream = stream;
-      
-      // Ensure the track is enabled on start
-      audioStream.getAudioTracks().forEach(track => track.enabled = true);
+      capturedStream = stream;
 
-      // Inform the UI that we are listening
-      chrome.runtime.sendMessage({ status: 'listening' });
+      // When the stream ends (e.g., tab closed), clean up.
+      stream.oninactive = () => {
+        stopMicMonitoring();
+      };
       
-      // When the stream ends (e.g., user closes the tab), stop everything.
-      stream.getTracks().forEach(track => {
-          track.onended = () => {
-              stopMicMonitoring();
-              chrome.runtime.sendMessage({ status: 'off' });
-          };
-      });
-
+      // We can start the MediaRecorder to process audio chunks
+      // This is a placeholder for sending audio to your AI
       mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          // Send audio data to the popup/React app for analysis
-           const reader = new FileReader();
-           reader.readAsDataURL(event.data);
-           reader.onloadend = () => {
-             chrome.runtime.sendMessage({ 
-                 action: 'processAudioChunk', 
-                 audioDataUri: reader.result 
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            // This is the audio chunk as a Base64 Data URI
+            const base64Audio = reader.result;
+            // Send this chunk to the popup for AI analysis
+            chrome.runtime.sendMessage({
+              action: 'processAudioChunk',
+              audioDataUri: base64Audio,
             });
-           };
+          };
+          reader.readAsDataURL(event.data);
         }
       };
+      
+      // Start recording and capture a chunk every 2 seconds
+      mediaRecorder.start(2000); 
 
-      mediaRecorder.start(config.muteDuration * 1000);
-      sendResponse({ success: true, message: 'Mic monitoring started.' });
+      sendResponse({ success: true });
     });
   });
 }
@@ -85,9 +78,17 @@ function stopMicMonitoring() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
   }
-  if (audioStream) {
-    audioStream.getTracks().forEach((track) => track.stop());
+  if (capturedStream) {
+    capturedStream.getTracks().forEach(track => track.stop());
   }
+  if (audioProcessorInterval) {
+    clearInterval(audioProcessorInterval);
+  }
+
+  capturedStream = null;
   mediaRecorder = null;
-  audioStream = null;
+  audioProcessorInterval = null;
+  
+  // Notify the popup that monitoring has stopped
+  chrome.runtime.sendMessage({ action: 'micMonitoringStopped' });
 }

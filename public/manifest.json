@@ -3,29 +3,15 @@
   "name": "Smart Privacy Extension",
   "version": "1.0",
   "description": "A personal dashboard for web privacy and utility.",
+  "permissions": ["storage", "activeTab", "tabCapture"],
+  "host_permissions": ["http://localhost:9002/*"],
   "action": {
     "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": [
-    "storage",
-    "activeTab",
-    "scripting",
-    "tabCapture"
-  ],
-  "host_permissions": [
-    "http://localhost:9002/*"
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "http://localhost:9002/*"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src http://localhost:9002/;"
+  }
 }
