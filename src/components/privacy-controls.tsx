@@ -18,6 +18,12 @@ import { analyzeAudioAndMute } from '@/ai/flows/auto-mute-microphone';
 import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
 import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
 
+declare global {
+  interface Window {
+    chrome: any;
+  }
+}
+
 export function PrivacyControls() {
   const { toast } = useToast();
 
@@ -76,7 +82,8 @@ export function PrivacyControls() {
             title: 'AI Error',
             description: 'Could not analyze audio.',
           });
-          setMicStatus('listening');
+          // Restore to listening state on error
+           setMicStatus(micStreamRef.current?.getAudioTracks().some(t => t.enabled) ? 'listening' : 'muted');
         }
       };
     },
@@ -84,30 +91,60 @@ export function PrivacyControls() {
   );
 
   const startMicMonitoring = useCallback(async () => {
+    // We need to use tabCapture to get the audio from the active tab.
+    if (typeof window.chrome === 'undefined' || !window.chrome.tabs) {
+       toast({
+        variant: 'destructive',
+        title: 'Unsupported Browser',
+        description: 'This feature is only available in a Chrome extension environment.',
+      });
+      setMicEnabled(false);
+      return;
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = stream;
+      window.chrome.tabCapture.capture({ audio: true, video: false }, (stream) => {
+        if (window.chrome.runtime.lastError || !stream) {
+          console.error(
+            'Error capturing tab:',
+            window.chrome.runtime.lastError?.message
+          );
+          toast({
+            variant: 'destructive',
+            title: 'Capture Error',
+            description:
+              'Could not capture tab audio. Make sure you are on an active tab.',
+          });
+          setMicEnabled(false);
+          return;
+        }
 
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = recorder;
+        micStreamRef.current = stream;
 
-      // When data is available, process the audio chunk
-      recorder.ondataavailable = processAudioChunk;
+        // Ensure we are not muted by default
+        stream.getAudioTracks().forEach(track => track.enabled = true);
 
-      // Start recording and capture a chunk every `muteDuration` seconds
-      recorder.start(muteDuration * 1000);
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = recorder;
 
-      setMicStatus('listening');
+        recorder.ondataavailable = processAudioChunk;
+        
+        // Start recording. The interval of data available is controlled by the AI flow duration.
+        recorder.start(muteDuration * 1000); 
+
+        setMicStatus('listening');
+      });
     } catch (err) {
-      console.error('Error accessing microphone:', err);
+      console.error('Error accessing microphone via tabCapture:', err);
       toast({
         variant: 'destructive',
         title: 'Permission Denied',
-        description: 'Could not access the microphone.',
+        description: 'Could not access the tab\'s audio.',
       });
       setMicEnabled(false);
     }
   }, [muteDuration, processAudioChunk, toast]);
+
 
   const stopMicMonitoring = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -240,7 +277,7 @@ export function PrivacyControls() {
             <Switch checked={micEnabled} onCheckedChange={setMicEnabled} />
           </div>
           <CardDescription>
-            Mute your mic automatically when no voice is detected.
+            Mute your mic automatically when no voice is detected in the current tab.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
