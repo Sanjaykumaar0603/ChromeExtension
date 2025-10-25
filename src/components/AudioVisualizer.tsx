@@ -9,30 +9,37 @@ interface AudioVisualizerProps {
 
 export function AudioVisualizer({ analyserNode }: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationFrameIdRef = useRef<number>();
 
   useEffect(() => {
     if (!canvasRef.current || !analyserNode) return;
 
     const canvas = canvasRef.current;
     const canvasCtx = canvas.getContext('2d');
-    let animationFrameId: number;
+    
+    // Get computed styles for theme colors
+    const style = getComputedStyle(document.body);
+    const backgroundColor = style.getPropertyValue('--secondary');
+    const foregroundColor = style.getPropertyValue('--primary');
+
+    analyserNode.fftSize = 256;
+    const bufferLength = analyserNode.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
 
     const draw = () => {
       if (!canvasCtx) return;
-      animationFrameId = requestAnimationFrame(draw);
+      
+      animationFrameIdRef.current = requestAnimationFrame(draw);
 
-      analyserNode.fftSize = 256;
-      const bufferLength = analyserNode.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
       analyserNode.getByteTimeDomainData(dataArray);
 
-      // Use theme colors
-      canvasCtx.fillStyle = 'hsl(var(--secondary))';
+      // Fill background
+      canvasCtx.fillStyle = `hsl(${backgroundColor})`;
       canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
+      // Draw waveform
       canvasCtx.lineWidth = 2;
-      canvasCtx.strokeStyle = 'hsl(var(--primary))';
-
+      canvasCtx.strokeStyle = `hsl(${foregroundColor})`;
       canvasCtx.beginPath();
 
       const sliceWidth = (canvas.width * 1.0) / bufferLength;
@@ -58,9 +65,13 @@ export function AudioVisualizer({ analyserNode }: AudioVisualizerProps) {
     draw();
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      if(animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
     };
   }, [analyserNode]);
 
-  return <canvas ref={canvasRef} width="300" height="96" className="w-full h-full" />;
+  return <canvas ref={canvasRef} width="300" height="96" className="w-full h-full rounded-lg" />;
 }
+
+    

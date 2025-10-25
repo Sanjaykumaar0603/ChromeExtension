@@ -24,7 +24,9 @@ export function PrivacyControls() {
 
   // Mic state
   const [micEnabled, setMicEnabled] = useState(false);
+  const [muteDuration, setMuteDuration] = useState(5);
   const { micStatus, startMuting, stopMuting, analyserNode } = useMicrophone({
+    silenceThreshold: muteDuration,
     onMicError: (error) => {
       toast({
         variant: 'destructive',
@@ -186,7 +188,7 @@ export function PrivacyControls() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {analyserNode && (
+          {micEnabled && analyserNode && (
             <div className="bg-secondary rounded-lg flex items-center justify-center overflow-hidden h-24">
               <AudioVisualizer analyserNode={analyserNode} />
             </div>
@@ -197,7 +199,8 @@ export function PrivacyControls() {
               id="mute-duration"
               type="number"
               min="1"
-              defaultValue={5}
+              value={muteDuration}
+              onChange={(e) => setMuteDuration(Number(e.target.value))}
               disabled={!micEnabled}
             />
           </div>
@@ -265,3 +268,5 @@ export function PrivacyControls() {
     </div>
   );
 }
+
+    
