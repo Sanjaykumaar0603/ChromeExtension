@@ -94,16 +94,8 @@ export function PrivacyControls() {
 
   const startCameraMonitoring = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       cameraStreamRef.current = stream;
-
-      // Make sure mic monitoring also controls this stream's audio
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = micStatus !== 'muted';
-      }
-
-
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
@@ -119,7 +111,7 @@ export function PrivacyControls() {
       });
       setCameraEnabled(false);
     }
-  }, [toast, analyzeCameraFeed, micStatus]);
+  }, [toast, analyzeCameraFeed]);
 
   const stopCameraMonitoring = useCallback(() => {
     // Stop analysis interval
@@ -268,5 +260,3 @@ export function PrivacyControls() {
     </div>
   );
 }
-
-    
