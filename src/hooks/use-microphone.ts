@@ -15,9 +15,10 @@ export function useMicrophone({
   onMicError,
 }: UseMicrophoneProps) {
   const [micStatus, setMicStatus] = useState<MicStatus>('off');
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const intervalIdRef = useRef<NodeJS.Timeout | null>(null);
   const silenceStartRef = useRef<number>(Date.now());
 
@@ -30,11 +31,12 @@ export function useMicrophone({
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-    if (audioContextRef.current) {
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
     setMicStatus('off');
+    setAnalyser(null);
   }, []);
 
   const startMuting = useCallback(async () => {
@@ -47,21 +49,21 @@ export function useMicrophone({
       streamRef.current = stream;
       const audioContext = new AudioContext();
       audioContextRef.current = audioContext;
-      const analyser = audioContext.createAnalyser();
-      analyserRef.current = analyser;
+      const newAnalyser = audioContext.createAnalyser();
+      setAnalyser(newAnalyser);
       const source = audioContext.createMediaStreamSource(stream);
-      source.connect(analyser);
+      source.connect(newAnalyser);
 
-      analyser.fftSize = 512;
-      const bufferLength = analyser.frequencyBinCount;
+      newAnalyser.fftSize = 512;
+      const bufferLength = newAnalyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
       silenceStartRef.current = Date.now();
       setMicStatus('listening');
 
       intervalIdRef.current = setInterval(() => {
-        if (!analyserRef.current || !streamRef.current) return;
+        if (!newAnalyser || !streamRef.current) return;
 
-        analyserRef.current.getByteTimeDomainData(dataArray);
+        newAnalyser.getByteTimeDomainData(dataArray);
         const isSilent = dataArray.every((v) => v === 128);
         const audioTrack = streamRef.current.getAudioTracks()[0];
 
@@ -96,5 +98,5 @@ export function useMicrophone({
     };
   }, [stopMuting]);
 
-  return { micStatus, startMuting, stopMuting };
+  return { micStatus, startMuting, stopMuting, analyserNode: analyser };
 }

@@ -12,19 +12,19 @@ import {
 } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
 import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
 import { useMicrophone } from '@/hooks/use-microphone';
+import { AudioVisualizer } from './AudioVisualizer';
 
 export function PrivacyControls() {
   const { toast } = useToast();
 
   // Mic state
   const [micEnabled, setMicEnabled] = useState(false);
-  const { micStatus, startMuting, stopMuting } = useMicrophone({
+  const { micStatus, startMuting, stopMuting, analyserNode } = useMicrophone({
     onMicError: (error) => {
       toast({
         variant: 'destructive',
@@ -182,21 +182,15 @@ export function PrivacyControls() {
             <Switch checked={micEnabled} onCheckedChange={handleMicToggle} />
           </div>
           <CardDescription>
-            Mute your mic automatically when no voice is detected. This affects the stream in this extension.
+            Mute your mic automatically when no voice is detected.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="sensitivity">Voice Detection Sensitivity</Label>
-            <Slider
-              id="sensitivity"
-              min={0.1}
-              max={1}
-              step={0.1}
-              defaultValue={[0.5]}
-              disabled={!micEnabled}
-            />
-          </div>
+          {analyserNode && (
+            <div className="bg-secondary rounded-lg flex items-center justify-center overflow-hidden h-24">
+              <AudioVisualizer analyserNode={analyserNode} />
+            </div>
+          )}
           <div>
             <Label htmlFor="mute-duration">Mute after (seconds)</Label>
             <Input
