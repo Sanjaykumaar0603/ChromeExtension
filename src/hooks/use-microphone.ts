@@ -64,7 +64,14 @@ export function useMicrophone({
         if (!newAnalyser || !streamRef.current) return;
 
         newAnalyser.getByteTimeDomainData(dataArray);
-        const isSilent = dataArray.every((v) => v === 128);
+
+        let sum = 0;
+        for(let i = 0; i < dataArray.length; i++) {
+          sum += Math.abs(dataArray[i] - 128);
+        }
+        const average = sum / dataArray.length;
+        const isSilent = average < 2; // More robust silence detection
+
         const audioTrack = streamRef.current.getAudioTracks()[0];
 
         if (!audioTrack) return;
@@ -73,8 +80,8 @@ export function useMicrophone({
           silenceStartRef.current = Date.now();
           if (!audioTrack.enabled) {
             audioTrack.enabled = true;
-            setMicStatus('listening');
           }
+          setMicStatus('listening');
         } else {
           const silenceDuration = (Date.now() - silenceStartRef.current) / 1000;
           if (silenceDuration > silenceThreshold && audioTrack.enabled) {
