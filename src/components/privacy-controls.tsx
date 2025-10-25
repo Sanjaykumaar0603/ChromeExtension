@@ -17,14 +17,24 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
 import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
+import { useMicrophone } from '@/hooks/use-microphone';
 
 export function PrivacyControls() {
   const { toast } = useToast();
 
   // Mic state
   const [micEnabled, setMicEnabled] = useState(false);
-  const [micStatus, setMicStatus] = useState<'listening' | 'muted' | 'off' | 'analyzing'>('off');
-  const [isMicMuted, setIsMicMuted] = useState(false);
+  const { micStatus, startMuting, stopMuting } = useMicrophone({
+    onMicError: (error) => {
+      toast({
+        variant: 'destructive',
+        title: 'Mic Error',
+        description: error,
+      });
+      setMicEnabled(false);
+    }
+  });
+
 
   // Camera state
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -37,80 +47,12 @@ export function PrivacyControls() {
   // Mic Toggle
   const handleMicToggle = (enabled: boolean) => {
     setMicEnabled(enabled);
-    if (!enabled) {
-      setMicStatus('off');
-      setIsMicMuted(false);
+    if (enabled) {
+      startMuting();
     } else {
-      setMicStatus('listening');
+      stopMuting();
     }
   };
-
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let audioContext: AudioContext | null = null;
-    let analyser: AnalyserNode | null = null;
-    let intervalId: NodeJS.Timeout | null = null;
-
-    const startMonitoring = async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioContext = new AudioContext();
-        analyser = audioContext.createAnalyser();
-        const source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-        analyser.fftSize = 512;
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        let silenceStart = Date.now();
-
-        intervalId = setInterval(() => {
-          analyser?.getByteTimeDomainData(dataArray);
-          const isSilent = dataArray.every(v => v === 128);
-
-          if (!isSilent) {
-            silenceStart = Date.now();
-            if (isMicMuted) {
-              setIsMicMuted(false);
-              setMicStatus('listening');
-            }
-          } else {
-            const silenceDuration = Date.now() - silenceStart;
-            if (silenceDuration > 5000 && !isMicMuted) { // 5 seconds of silence
-              setIsMicMuted(true);
-              setMicStatus('muted');
-            }
-          }
-        }, 100);
-
-      } catch (err) {
-        console.error("Error accessing microphone:", err);
-        toast({ variant: 'destructive', title: 'Mic Error', description: 'Could not access microphone.' });
-        setMicEnabled(false);
-      }
-    };
-
-    const stopMonitoring = () => {
-      if (intervalId) clearInterval(intervalId);
-      stream?.getTracks().forEach(track => track.stop());
-      audioContext?.close();
-    };
-
-    if (micEnabled) {
-      startMonitoring();
-    } else {
-      stopMonitoring();
-    }
-
-    return () => stopMonitoring();
-  }, [micEnabled, isMicMuted, toast]);
-
-  useEffect(() => {
-    if (cameraStreamRef.current) {
-        cameraStreamRef.current.getAudioTracks().forEach(track => {
-            track.enabled = !isMicMuted;
-        });
-    }
-  }, [isMicMuted]);
 
 
   const captureFrame = useCallback(() => {
@@ -150,8 +92,16 @@ export function PrivacyControls() {
 
   const startCameraMonitoring = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       cameraStreamRef.current = stream;
+
+      // Make sure mic monitoring also controls this stream's audio
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = micStatus !== 'muted';
+      }
+
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
@@ -167,7 +117,7 @@ export function PrivacyControls() {
       });
       setCameraEnabled(false);
     }
-  }, [toast, analyzeCameraFeed]);
+  }, [toast, analyzeCameraFeed, micStatus]);
 
   const stopCameraMonitoring = useCallback(() => {
     // Stop analysis interval
@@ -192,6 +142,17 @@ export function PrivacyControls() {
     }
     return () => stopCameraMonitoring(); // Cleanup on unmount
   }, [cameraEnabled, startCameraMonitoring, stopCameraMonitoring]);
+
+  // Sync camera mic with auto-mute status
+  useEffect(() => {
+    if (cameraStreamRef.current) {
+      const audioTrack = cameraStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = micStatus !== 'muted';
+      }
+    }
+  }, [micStatus]);
+
 
   const micStatusInfo = {
     off: { icon: MicOff, text: 'Disabled', color: 'text-muted-foreground' },
@@ -226,7 +187,7 @@ export function PrivacyControls() {
             <Switch checked={micEnabled} onCheckedChange={handleMicToggle} />
           </div>
           <CardDescription>
-            Mute your mic automatically when no voice is detected in the current tab.
+            Mute your mic automatically when no voice is detected. This affects the stream in this extension.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

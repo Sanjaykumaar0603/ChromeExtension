@@ -1,0 +1,100 @@
+
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+type MicStatus = 'listening' | 'muted' | 'off';
+
+interface UseMicrophoneProps {
+  silenceThreshold?: number; // seconds
+  onMicError?: (error: string) => void;
+}
+
+export function useMicrophone({
+  silenceThreshold = 5,
+  onMicError,
+}: UseMicrophoneProps) {
+  const [micStatus, setMicStatus] = useState<MicStatus>('off');
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const intervalIdRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceStartRef = useRef<number>(Date.now());
+
+  const stopMuting = useCallback(() => {
+    if (intervalIdRef.current) {
+      clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    setMicStatus('off');
+  }, []);
+
+  const startMuting = useCallback(async () => {
+    if (streamRef.current) {
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      analyserRef.current = analyser;
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      analyser.fftSize = 512;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      silenceStartRef.current = Date.now();
+      setMicStatus('listening');
+
+      intervalIdRef.current = setInterval(() => {
+        if (!analyserRef.current || !streamRef.current) return;
+
+        analyserRef.current.getByteTimeDomainData(dataArray);
+        const isSilent = dataArray.every((v) => v === 128);
+        const audioTrack = streamRef.current.getAudioTracks()[0];
+
+        if (!audioTrack) return;
+
+        if (!isSilent) {
+          silenceStartRef.current = Date.now();
+          if (!audioTrack.enabled) {
+            audioTrack.enabled = true;
+            setMicStatus('listening');
+          }
+        } else {
+          const silenceDuration = (Date.now() - silenceStartRef.current) / 1000;
+          if (silenceDuration > silenceThreshold && audioTrack.enabled) {
+            audioTrack.enabled = false;
+            setMicStatus('muted');
+          }
+        }
+      }, 200);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      if (onMicError) {
+        onMicError('Could not access microphone. Please check permissions.');
+      }
+      stopMuting();
+    }
+  }, [onMicError, silenceThreshold, stopMuting]);
+
+  useEffect(() => {
+    return () => {
+      stopMuting();
+    };
+  }, [stopMuting]);
+
+  return { micStatus, startMuting, stopMuting };
+}
