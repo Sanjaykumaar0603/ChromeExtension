@@ -156,13 +156,8 @@ export function PrivacyControls() {
 
   const micStatusInfo = {
     off: { icon: MicOff, text: 'Disabled', color: 'text-muted-foreground' },
-    listening: { icon: Mic, text: 'Listening', color: 'text-green-500' },
-    muted: { icon: MicOff, text: 'Muted', color: 'text-yellow-500' },
-    analyzing: {
-      icon: BrainCircuit,
-      text: 'Analyzing...',
-      color: 'text-blue-500 animate-pulse',
-    },
+    listening: { icon: Mic, text: 'Voice Detected', color: 'text-green-500 animate-pulse' },
+    muted: { icon: MicOff, text: 'Muted (Silence)', color: 'text-yellow-500' },
   };
 
   const cameraStatusInfo = {
