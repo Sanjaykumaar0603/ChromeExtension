@@ -26,6 +26,7 @@ export function AudioVisualizer({ analyserNode }: AudioVisualizerProps) {
       const dataArray = new Uint8Array(bufferLength);
       analyserNode.getByteTimeDomainData(dataArray);
 
+      // Use theme colors
       canvasCtx.fillStyle = 'hsl(var(--secondary))';
       canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
 
