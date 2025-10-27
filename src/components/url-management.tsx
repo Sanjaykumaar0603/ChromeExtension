@@ -153,13 +153,20 @@ export function UrlManagement() {
   };
 
   const handleRemoveUrl = (id: string) => {
+    // Clear the timer for the URL being removed
+    if (timersRef.current[id]) {
+      clearInterval(timersRef.current[id]);
+      delete timersRef.current[id];
+    }
+    
     setUrls((prevUrls) => prevUrls.filter((url) => url.id !== id));
+    
     setPingResults((prevResults) => {
       const newResults = { ...prevResults };
       delete newResults[id];
       return newResults;
     });
-    // The useEffect will handle clearing the timer.
+
     toast({ title: 'Success', description: 'URL removed.' });
   };
 
