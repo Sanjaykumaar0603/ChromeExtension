@@ -118,8 +118,10 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
       clearTimeout(absenceTimerRef.current);
       absenceTimerRef.current = null;
     }
-    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
-    cameraStreamRef.current = null;
+    if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
+    }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -127,23 +129,27 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const getCameraPermission = async () => {
       if (cameraEnabled) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({video: true});
+          if (!isMounted) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+          }
           setHasCameraPermission(true);
           cameraStreamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            await videoRef.current.play();
+            videoRef.current.play().catch(e => console.error("Video play interrupted", e));
           }
           setCameraStatus('on');
           // Start analysis after a short delay to ensure video is playing
-          setTimeout(() => {
-            analysisIntervalRef.current = setInterval(analyzeCameraFeed, 1000); // Check every second
-          }, 500);
+          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 1000); // Check every second
 
         } catch (error) {
+          if (!isMounted) return;
           console.error('Error accessing camera:', error);
           setHasCameraPermission(false);
           toast({
@@ -163,6 +169,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
     getCameraPermission();
     
     return () => {
+        isMounted = false;
         stopCameraMonitoring();
     }
   }, [cameraEnabled, analyzeCameraFeed, stopCameraMonitoring, toast]);

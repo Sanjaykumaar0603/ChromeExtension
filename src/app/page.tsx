@@ -10,12 +10,13 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShieldCheck, LogOut, Globe, Shield } from 'lucide-react';
+import { ShieldCheck, LogOut, Globe, Shield, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PrivacyControls } from '@/components/privacy-controls';
 import { UrlManagement } from '@/components/url-management';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { SetupCameraProfile } from '@/components/setup-camera-profile';
+import { ProfileSettings } from '@/components/profile-settings';
 
 export default function Home() {
   const { user, logout } = useAuth();
@@ -54,7 +55,7 @@ export default function Home() {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="privacy" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="privacy">
                 <Shield className="mr-2 h-4 w-4" />
                 Privacy
@@ -63,12 +64,22 @@ export default function Home() {
                 <Globe className="mr-2 h-4 w-4" />
                 Pinger
               </TabsTrigger>
+              <TabsTrigger value="profile">
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="privacy" className="mt-4">
               <PrivacyControls referencePhoto={referencePhoto} />
             </TabsContent>
             <TabsContent value="pinger" className="mt-4">
               <UrlManagement />
+            </TabsContent>
+            <TabsContent value="profile" className="mt-4">
+                <ProfileSettings
+                    referencePhoto={referencePhoto}
+                    onRetakePhoto={() => setReferencePhoto(null)}
+                />
             </TabsContent>
           </Tabs>
         </CardContent>
