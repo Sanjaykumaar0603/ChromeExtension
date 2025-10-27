@@ -89,7 +89,6 @@ export function UrlManagement() {
   }, [setUrls]);
 
   useEffect(() => {
-    // This effect manages timers for URLs.
     const currentTimers = timersRef.current;
     const urlIds = new Set(urls.map(u => u.id));
 
@@ -99,7 +98,7 @@ export function UrlManagement() {
         const interval = urlItem.pingInterval * 60 * 1000;
         if (interval > 0) {
           // Initial ping is delayed slightly to allow UI to settle.
-          setTimeout(() => handlePingUrl(urlItem, false), 1000);
+          handlePingUrl(urlItem, false);
           
           currentTimers[urlItem.id] = setInterval(() => {
             handlePingUrl(urlItem, false);
@@ -153,7 +152,6 @@ export function UrlManagement() {
   };
 
   const handleRemoveUrl = (id: string) => {
-    // Clear the timer for the URL being removed
     if (timersRef.current[id]) {
       clearInterval(timersRef.current[id]);
       delete timersRef.current[id];
@@ -181,13 +179,13 @@ export function UrlManagement() {
       case 'pending':
         return <Timer className="h-4 w-4 animate-spin" />;
       default:
-        return null;
+        return <Timer className="h-4 w-4 text-muted-foreground" />;
     }
   };
   
   const getChartData = (urlItem: SavedUrl) => {
       return (urlItem.pingHistory || []).map(h => ({
-          time: new Date(h.timestamp).toLocaleTimeString(),
+          time: new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           duration: h.status === 'error' ? null : h.duration,
       }));
   }
@@ -239,8 +237,8 @@ export function UrlManagement() {
                             <Button variant="outline" size="sm" onClick={() => handlePingUrl(urlItem, true)}>
                             Ping
                             </Button>
-                            <Button variant="destructive" size="icon" onClick={() => handleRemoveUrl(urlItem.id)}>
-                            <Trash2 className="h-4 w-4" />
+                            <Button variant="ghost" size="icon" onClick={() => handleRemoveUrl(urlItem.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                         </div>
                     </div>
