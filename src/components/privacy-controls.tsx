@@ -77,7 +77,10 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   const analyzeCameraFeed = useCallback(async () => {
     if (cameraStatus === 'analyzing') return;
     const frame = captureFrame();
-    if (!frame) return;
+    if (!frame) {
+      setCameraStatus('on');
+      return;
+    }
 
     setCameraStatus('analyzing');
     try {
@@ -145,7 +148,8 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
             videoRef.current.play().catch(e => console.error("Video play interrupted", e));
           }
           setCameraStatus('on');
-          // Start analysis after a short delay to ensure video is playing
+          
+          if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
           analysisIntervalRef.current = setInterval(analyzeCameraFeed, 1000); // Check every second
 
         } catch (error) {
@@ -221,6 +225,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
             <div className="bg-secondary rounded-lg flex items-center justify-center overflow-hidden h-24">
               <AudioVisualizer analyserNode={analyserNode} />
             </div>
+
           )}
           <div>
             <Label htmlFor="mute-duration">Mute after (seconds)</Label>
