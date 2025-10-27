@@ -11,18 +11,12 @@ const firebaseConfig = {
 };
 
 let app: FirebaseApp;
-let auth: Auth;
-
-if (typeof window !== 'undefined' && !getApps().length) {
+if (!getApps().length) {
   app = initializeApp(firebaseConfig);
-} else if (typeof window !== 'undefined') {
+} else {
   app = getApp();
 }
 
-if (typeof window !== 'undefined') {
-    auth = getAuth(app);
-}
+const auth: Auth = getAuth(app);
 
-
-// @ts-ignore
 export { auth };

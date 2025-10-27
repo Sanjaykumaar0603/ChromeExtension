@@ -10,8 +10,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UrlManagement } from '@/components/url-management';
-import { PrivacyControls } from '@/components/privacy-controls';
 import { ShieldCheck, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -46,18 +44,7 @@ export default function Home() {
           </Button>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="privacy" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="privacy">Privacy Controls</TabsTrigger>
-              <TabsTrigger value="urls">URL Manager</TabsTrigger>
-            </TabsList>
-            <TabsContent value="privacy" className="mt-6">
-              <PrivacyControls />
-            </TabsContent>
-            <TabsContent value="urls" className="mt-6">
-              <UrlManagement />
-            </TabsContent>
-          </Tabs>
+           <p className="text-center text-muted-foreground">App content will go here.</p>
         </CardContent>
       </Card>
     </main>

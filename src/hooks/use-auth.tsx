@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+       {loading ? <div className="flex items-center justify-center h-screen w-[400px]"><p>Loading...</p></div> : children}
     </AuthContext.Provider>
   );
 }
