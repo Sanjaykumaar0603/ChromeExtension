@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Timer, CheckCircle, XCircle, AlertCircle, Trash2, AreaChart } from 'lucide-react';
@@ -32,7 +32,6 @@ export function UrlManagement() {
   const { toast } = useToast();
   const [expandedUrlId, setExpandedUrlId] = useState<string | null>(null);
   const timersRef = useRef<Record<string, NodeJS.Timeout>>({});
-  const isMounted = useRef(false);
 
   const updateUrlHistory = useCallback((id: string, newHistoryEntry: SavedUrl['pingHistory'][0]) => {
     setUrls(prevUrls =>
@@ -90,12 +89,11 @@ export function UrlManagement() {
   }
 
   const schedulePing = useCallback((urlItem: SavedUrl) => {
-    clearTimer(urlItem.id); // Clear existing timer if any before scheduling a new one
+    clearTimer(urlItem.id); 
     const interval = urlItem.pingInterval * 60 * 1000;
     if (interval > 0) {
-      handlePingUrl(urlItem); // Initial ping
+      handlePingUrl(urlItem); 
       timersRef.current[urlItem.id] = setInterval(() => {
-        // Refetch the latest item state before pinging
         setUrls(currentUrls => {
             const currentUrlItem = currentUrls.find(u => u.id === urlItem.id);
             if (currentUrlItem) {
@@ -148,21 +146,18 @@ export function UrlManagement() {
     toast({ title: 'URL removed', description: 'Stopped monitoring the URL.' });
   };
   
-  // Effect to setup timers on initial mount
   useEffect(() => {
-    if (!isMounted.current) {
-        urls.forEach(urlItem => {
+    urls.forEach(urlItem => {
+        if (!timersRef.current[urlItem.id]) {
             schedulePing(urlItem);
-        });
-        isMounted.current = true;
-    }
-    // Cleanup all timers on component unmount
+        }
+    });
+
     return () => {
       Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array ensures this runs only once on mount
+  }, [urls, schedulePing]);
 
   const getStatusIcon = (status?: PingResult['status']) => {
     switch (status) {
@@ -226,15 +221,12 @@ export function UrlManagement() {
                                 <span>{pingResults[urlItem.id]?.message || 'Waiting for first ping...'}</span>
                             </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 pl-2">
                             <Button variant="ghost" size="icon" onClick={() => setExpandedUrlId(expandedUrlId === urlItem.id ? null : urlItem.id)}>
                                 <AreaChart className="h-4 w-4"/>
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => handlePingUrl(urlItem, true)}>
                             Ping
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleRemoveUrl(urlItem.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                         </div>
                     </div>
@@ -258,6 +250,11 @@ export function UrlManagement() {
                         </div>
                     )}
                 </CardContent>
+                <CardFooter className="flex justify-end p-2 pt-0">
+                    <Button variant="ghost" size="icon" onClick={() => handleRemoveUrl(urlItem.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                </CardFooter>
               </Card>
             ))
           ) : (
