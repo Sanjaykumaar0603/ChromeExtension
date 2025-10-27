@@ -89,14 +89,15 @@ export function UrlManagement() {
   }, [setUrls, setPingResults]);
 
   useEffect(() => {
+    // This effect manages the timers.
     const currentTimers = timersRef.current;
     
-    // Set up timers for all URLs
+    // Start timers for URLs that don't have one
     urls.forEach(urlItem => {
         if (!currentTimers[urlItem.id]) {
             const interval = urlItem.pingInterval * 60 * 1000;
             if (interval > 0) {
-                // Initial ping to get immediate feedback
+                // Initial ping for newly discovered URLs (e.g., on page load)
                 handlePingUrl(urlItem);
                 
                 // Set up the interval
@@ -107,14 +108,21 @@ export function UrlManagement() {
         }
     });
 
+    // Cleanup timers for URLs that have been removed
+    const urlIds = new Set(urls.map(u => u.id));
+    Object.keys(currentTimers).forEach(timerId => {
+        if (!urlIds.has(timerId)) {
+            clearInterval(currentTimers[timerId]);
+            delete currentTimers[timerId];
+        }
+    });
+
     // Cleanup function runs when component unmounts
     return () => {
-      Object.values(currentTimers).forEach(clearInterval);
+      Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
     };
-    // This effect should only run once on mount, so we pass an empty dependency array.
-    // The handlePingUrl is wrapped in useCallback to be stable.
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [urls, handlePingUrl]);
 
 
   const handleAddUrl = () => {
@@ -139,29 +147,27 @@ export function UrlManagement() {
       pingHistory: [],
     };
     
-    // Add the new timer
-    const interval = newUrlItem.pingInterval * 60 * 1000;
-     if (interval > 0) {
-        handlePingUrl(newUrlItem); // Ping immediately
-        timersRef.current[newUrlItem.id] = setInterval(() => {
-            handlePingUrl(newUrlItem);
-        }, interval);
-    }
-
     setUrls((prev) => [...prev, newUrlItem]);
+
+    // Don't set up timer here, the useEffect will handle it.
+    // This prevents duplicate timers.
+
     setNewUrl('');
     setNewPingInterval(5);
     toast({ title: 'Success', description: 'URL added and monitoring started.' });
   };
 
   const handleRemoveUrl = (id: string) => {
+    // Clear the timer from our ref
     if (timersRef.current[id]) {
       clearInterval(timersRef.current[id]);
       delete timersRef.current[id];
     }
     
+    // Remove the URL from state, which will trigger the effect cleanup
     setUrls((prevUrls) => prevUrls.filter((url) => url.id !== id));
     
+    // Clean up results for the removed URL
     setPingResults((prevResults) => {
       const newResults = { ...prevResults };
       delete newResults[id];
