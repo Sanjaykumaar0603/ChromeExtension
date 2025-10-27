@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
@@ -31,7 +32,10 @@ export function UrlManagement() {
   const [pingResults, setPingResults] = useState<Record<string, PingResult>>({});
   const { toast } = useToast();
   const [expandedUrlId, setExpandedUrlId] = useState<string | null>(null);
+  const [maxBookmarks, setMaxBookmarks] = useState(10);
+
   const timersRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const isInitialMount = useRef(true);
 
   const updateUrlHistory = useCallback((id: string, newHistoryEntry: SavedUrl['pingHistory'][0]) => {
     setUrls(prevUrls =>
@@ -94,23 +98,37 @@ export function UrlManagement() {
     if (interval > 0) {
       handlePingUrl(urlItem); 
       timersRef.current[urlItem.id] = setInterval(() => {
-        setUrls(currentUrls => {
-            const currentUrlItem = currentUrls.find(u => u.id === urlItem.id);
-            if (currentUrlItem) {
-                handlePingUrl(currentUrlItem);
-            }
-            return currentUrls;
-        });
+        // We get the most recent version of the item from localStorage to avoid stale state in closure
+        const currentUrls = JSON.parse(localStorage.getItem('savedUrls') || '[]') as SavedUrl[];
+        const currentUrlItem = currentUrls.find(u => u.id === urlItem.id);
+        if (currentUrlItem) {
+          handlePingUrl(currentUrlItem);
+        }
       }, interval);
     }
-  }, [handlePingUrl, setUrls]);
+  }, [handlePingUrl]);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+        urls.forEach(urlItem => schedulePing(urlItem));
+        isInitialMount.current = false;
+    }
+    // This effect should only run on mount to set up initial timers.
+    // Subsequent timer management is handled by add/remove functions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddUrl = () => {
+    if (urls.length >= maxBookmarks) {
+        toast({ title: 'Error', description: `You have reached the maximum of ${maxBookmarks} bookmarks.`, variant: 'destructive' });
+        return;
+    }
     if (!newUrl.trim()) {
       toast({ title: 'Error', description: 'URL cannot be empty.', variant: 'destructive' });
       return;
     }
-    if (typeof newPingInterval !== 'number' || newPingInterval <= 0) {
+    const interval = typeof newPingInterval === 'number' ? newPingInterval : parseInt(newPingInterval, 10);
+    if (isNaN(interval) || interval <= 0) {
       toast({ title: 'Error', description: 'Ping interval must be a positive number.', variant: 'destructive' });
       return;
     }
@@ -123,12 +141,13 @@ export function UrlManagement() {
     const newUrlItem: SavedUrl = {
       id: Date.now().toString(),
       url: formattedUrl,
-      pingInterval: newPingInterval,
+      pingInterval: interval,
       pingHistory: [],
     };
     
-    setUrls(prev => [...prev, newUrlItem]);
+    // Schedule the ping for the new item *before* adding it to state
     schedulePing(newUrlItem);
+    setUrls(prev => [...prev, newUrlItem]);
 
     setNewUrl('');
     setNewPingInterval(5);
@@ -146,18 +165,13 @@ export function UrlManagement() {
     toast({ title: 'URL removed', description: 'Stopped monitoring the URL.' });
   };
   
+  // Cleanup timers on component unmount
   useEffect(() => {
-    urls.forEach(urlItem => {
-        if (!timersRef.current[urlItem.id]) {
-            schedulePing(urlItem);
-        }
-    });
-
     return () => {
       Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
     };
-  }, [urls, schedulePing]);
+  }, []);
 
   const getStatusIcon = (status?: PingResult['status']) => {
     switch (status) {
@@ -190,6 +204,7 @@ export function UrlManagement() {
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAddUrl()}
+          disabled={urls.length >= maxBookmarks}
         />
         <div className="flex gap-2">
             <Input
@@ -200,10 +215,22 @@ export function UrlManagement() {
             onKeyDown={(e) => e.key === 'Enter' && handleAddUrl()}
             min="1"
             className="w-full"
+            disabled={urls.length >= maxBookmarks}
             />
-            <Button onClick={handleAddUrl}>
+            <Button onClick={handleAddUrl} disabled={urls.length >= maxBookmarks}>
                 Add URL
             </Button>
+        </div>
+        <div className="flex flex-col gap-2">
+            <Label htmlFor="max-bookmarks">Max Bookmarks</Label>
+            <Input
+                id="max-bookmarks"
+                type="number"
+                min="1"
+                value={maxBookmarks}
+                onChange={(e) => setMaxBookmarks(Number(e.target.value))}
+                className="w-24"
+            />
         </div>
       </div>
 
@@ -251,7 +278,7 @@ export function UrlManagement() {
                     )}
                 </CardContent>
                 <CardFooter className="flex justify-end p-2 pt-0">
-                    <Button variant="ghost" size="icon" onClick={() => handleRemoveUrl(urlItem.id)}>
+                    <Button variant="ghost" size="icon" onClick={() => handleRemoveUrl(urlItem.id)} aria-label="Remove URL">
                         <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                 </CardFooter>
