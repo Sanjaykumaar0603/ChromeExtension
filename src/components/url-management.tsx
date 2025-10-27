@@ -32,10 +32,9 @@ export function UrlManagement() {
   const [pingResults, setPingResults] = useState<Record<string, PingResult>>({});
   const { toast } = useToast();
   const [expandedUrlId, setExpandedUrlId] = useState<string | null>(null);
-  const [maxBookmarks, setMaxBookmarks] = useState(10);
+  const [maxBookmarks, setMaxBookmarks] = useLocalStorage('maxBookmarks', 10);
 
   const timersRef = useRef<Record<string, NodeJS.Timeout>>({});
-  const isInitialMount = useRef(true);
 
   const updateUrlHistory = useCallback((id: string, newHistoryEntry: SavedUrl['pingHistory'][0]) => {
     setUrls(prevUrls =>
@@ -85,37 +84,27 @@ export function UrlManagement() {
     }
   }, [updateUrlHistory]);
 
-  const clearTimer = (id: string) => {
-    if (timersRef.current[id]) {
-        clearInterval(timersRef.current[id]);
-        delete timersRef.current[id];
-    }
-  }
-
   const schedulePing = useCallback((urlItem: SavedUrl) => {
-    clearTimer(urlItem.id); 
+    if (timersRef.current[urlItem.id]) {
+      clearInterval(timersRef.current[urlItem.id]);
+    }
     const interval = urlItem.pingInterval * 60 * 1000;
     if (interval > 0) {
       handlePingUrl(urlItem); 
       timersRef.current[urlItem.id] = setInterval(() => {
-        // We get the most recent version of the item from localStorage to avoid stale state in closure
-        const currentUrls = JSON.parse(localStorage.getItem('savedUrls') || '[]') as SavedUrl[];
-        const currentUrlItem = currentUrls.find(u => u.id === urlItem.id);
-        if (currentUrlItem) {
-          handlePingUrl(currentUrlItem);
-        }
+        handlePingUrl(urlItem);
       }, interval);
     }
   }, [handlePingUrl]);
 
   useEffect(() => {
-    if (isInitialMount.current) {
-        urls.forEach(urlItem => schedulePing(urlItem));
-        isInitialMount.current = false;
-    }
-    // This effect should only run on mount to set up initial timers.
-    // Subsequent timer management is handled by add/remove functions.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    urls.forEach(urlItem => schedulePing(urlItem));
+
+    return () => {
+      Object.values(timersRef.current).forEach(clearInterval);
+      timersRef.current = {};
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddUrl = () => {
@@ -145,9 +134,8 @@ export function UrlManagement() {
       pingHistory: [],
     };
     
-    // Schedule the ping for the new item *before* adding it to state
-    schedulePing(newUrlItem);
     setUrls(prev => [...prev, newUrlItem]);
+    schedulePing(newUrlItem);
 
     setNewUrl('');
     setNewPingInterval(5);
@@ -155,7 +143,10 @@ export function UrlManagement() {
   };
 
   const handleRemoveUrl = (id: string) => {
-    clearTimer(id);
+    if (timersRef.current[id]) {
+      clearInterval(timersRef.current[id]);
+      delete timersRef.current[id];
+    }
     setUrls(prevUrls => prevUrls.filter(url => url.id !== id));
     setPingResults(prevResults => {
       const newResults = { ...prevResults };
@@ -164,14 +155,6 @@ export function UrlManagement() {
     });
     toast({ title: 'URL removed', description: 'Stopped monitoring the URL.' });
   };
-  
-  // Cleanup timers on component unmount
-  useEffect(() => {
-    return () => {
-      Object.values(timersRef.current).forEach(clearInterval);
-      timersRef.current = {};
-    };
-  }, []);
 
   const getStatusIcon = (status?: PingResult['status']) => {
     switch (status) {
