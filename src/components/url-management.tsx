@@ -42,7 +42,6 @@ export function UrlManagement() {
     try {
       const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(urlItem.url)}`);
       const duration = Date.now() - startTime;
-
       const newHistoryEntry = { timestamp: Date.now(), status: 'success' as const, duration };
       
       let newResult: PingResult;
@@ -58,8 +57,12 @@ export function UrlManagement() {
       }
 
       setPingResults((prev) => ({ ...prev, [urlItem.id]: newResult }));
-      setUrls((prevUrls) =>
-        prevUrls.map((u) =>
+      
+      setUrls((prevUrls) => {
+        const urlExists = prevUrls.some(u => u.id === urlItem.id);
+        if (!urlExists) return prevUrls; // Don't update state if URL was removed
+
+        return prevUrls.map((u) =>
           u.id === urlItem.id
             ? {
                 ...u,
@@ -67,15 +70,19 @@ export function UrlManagement() {
                 lastPingTime: Date.now(),
               }
             : u
-        )
-      );
+        );
+      });
 
     } catch (error) {
       const duration = Date.now() - startTime;
       const newHistoryEntry = { timestamp: Date.now(), status: 'error' as const, duration };
       setPingResults((prev) => ({ ...prev, [urlItem.id]: { status: 'error', message: 'Network Error' } }));
-      setUrls((prevUrls) =>
-        prevUrls.map((u) =>
+      
+      setUrls((prevUrls) => {
+        const urlExists = prevUrls.some(u => u.id === urlItem.id);
+        if (!urlExists) return prevUrls;
+
+        return prevUrls.map((u) =>
           u.id === urlItem.id
             ? {
                 ...u,
@@ -83,46 +90,47 @@ export function UrlManagement() {
                 lastPingTime: Date.now(),
               }
             : u
-        )
-      );
+        );
+      });
     }
   }, [setUrls, setPingResults]);
 
+  const schedulePing = useCallback((urlItem: SavedUrl) => {
+    const interval = urlItem.pingInterval * 60 * 1000;
+    if (interval > 0) {
+      handlePingUrl(urlItem); // Initial ping
+      timersRef.current[urlItem.id] = setInterval(() => {
+        handlePingUrl(urlItem);
+      }, interval);
+    }
+  }, [handlePingUrl]);
+  
+  // Effect to setup and teardown timers
   useEffect(() => {
-    // This effect manages the timers.
     const currentTimers = timersRef.current;
     
-    // Start timers for URLs that don't have one
+    // Start timers for new URLs
     urls.forEach(urlItem => {
-        if (!currentTimers[urlItem.id]) {
-            const interval = urlItem.pingInterval * 60 * 1000;
-            if (interval > 0) {
-                // Initial ping for newly discovered URLs (e.g., on page load)
-                handlePingUrl(urlItem);
-                
-                // Set up the interval
-                currentTimers[urlItem.id] = setInterval(() => {
-                    handlePingUrl(urlItem);
-                }, interval);
-            }
-        }
+      if (!currentTimers[urlItem.id]) {
+        schedulePing(urlItem);
+      }
     });
 
-    // Cleanup timers for URLs that have been removed
+    // Clear timers for removed URLs
     const urlIds = new Set(urls.map(u => u.id));
     Object.keys(currentTimers).forEach(timerId => {
-        if (!urlIds.has(timerId)) {
-            clearInterval(currentTimers[timerId]);
-            delete currentTimers[timerId];
-        }
+      if (!urlIds.has(timerId)) {
+        clearInterval(currentTimers[timerId]);
+        delete currentTimers[timerId];
+      }
     });
 
-    // Cleanup function runs when component unmounts
+    // Cleanup all timers on component unmount
     return () => {
       Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
     };
-  }, [urls, handlePingUrl]);
+  }, [urls, schedulePing]);
 
 
   const handleAddUrl = () => {
@@ -148,23 +156,19 @@ export function UrlManagement() {
     };
     
     setUrls((prev) => [...prev, newUrlItem]);
-
-    // Don't set up timer here, the useEffect will handle it.
-    // This prevents duplicate timers.
-
     setNewUrl('');
     setNewPingInterval(5);
     toast({ title: 'Success', description: 'URL added and monitoring started.' });
   };
 
   const handleRemoveUrl = (id: string) => {
-    // Clear the timer from our ref
+    // Clear the specific timer from our ref
     if (timersRef.current[id]) {
       clearInterval(timersRef.current[id]);
       delete timersRef.current[id];
     }
     
-    // Remove the URL from state, which will trigger the effect cleanup
+    // Remove the URL from state
     setUrls((prevUrls) => prevUrls.filter((url) => url.id !== id));
     
     // Clean up results for the removed URL
@@ -174,7 +178,7 @@ export function UrlManagement() {
       return newResults;
     });
 
-    toast({ title: 'Success', description: 'URL removed.' });
+    toast({ title: 'URL removed', description: 'Stopped monitoring the URL.' });
   };
 
   const getStatusIcon = (status?: PingResult['status']) => {
