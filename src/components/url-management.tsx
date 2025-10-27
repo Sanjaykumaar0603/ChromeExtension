@@ -63,7 +63,7 @@ export function UrlManagement() {
           u.id === urlItem.id
             ? {
                 ...u,
-                pingHistory: [...u.pingHistory, newHistoryEntry].slice(-20), // Keep last 20 pings
+                pingHistory: [...(u.pingHistory || []), newHistoryEntry].slice(-20), // Keep last 20 pings
                 lastPingTime: isManual ? u.lastPingTime : Date.now(), // Only update lastPingTime on automatic pings
               }
             : u
@@ -79,7 +79,7 @@ export function UrlManagement() {
           u.id === urlItem.id
             ? {
                 ...u,
-                pingHistory: [...u.pingHistory, newHistoryEntry].slice(-20),
+                pingHistory: [...(u.pingHistory || []), newHistoryEntry].slice(-20),
                 lastPingTime: isManual ? u.lastPingTime : Date.now(),
               }
             : u
@@ -94,6 +94,9 @@ export function UrlManagement() {
     }
     const interval = urlItem.pingInterval * 60 * 1000;
     if (interval > 0) {
+      // Initial ping
+      handlePingUrl(urlItem);
+      // Scheduled pings
       timersRef.current[urlItem.id] = setInterval(() => {
         handlePingUrl(urlItem);
       }, interval);
@@ -101,16 +104,14 @@ export function UrlManagement() {
   }, [handlePingUrl]);
 
   useEffect(() => {
-    urls.forEach((url) => {
-      // Initial ping on load if desired, then schedule
-      handlePingUrl(url);
-      schedulePing(url);
-    });
+    urls.forEach(schedulePing);
+
     return () => {
       Object.values(timersRef.current).forEach(clearInterval);
+      timersRef.current = {};
     };
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urls, schedulePing]);
+  }, []); // Run only once on mount
 
 
   const handleAddUrl = () => {
@@ -173,7 +174,7 @@ export function UrlManagement() {
   };
   
   const getChartData = (urlItem: SavedUrl) => {
-      return urlItem.pingHistory.map(h => ({
+      return (urlItem.pingHistory || []).map(h => ({
           time: new Date(h.timestamp).toLocaleTimeString(),
           duration: h.status === 'error' ? 0 : h.duration,
           status: h.status
@@ -232,7 +233,7 @@ export function UrlManagement() {
                             </Button>
                         </div>
                     </div>
-                     {expandedUrlId === urlItem.id && urlItem.pingHistory.length > 0 && (
+                     {expandedUrlId === urlItem.id && (urlItem.pingHistory || []).length > 0 && (
                         <div className="mt-4 h-40">
                              <ResponsiveContainer width="100%" height="100%">
                                 <LineChart data={getChartData(urlItem)}>
