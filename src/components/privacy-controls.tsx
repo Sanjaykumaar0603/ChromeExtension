@@ -181,7 +181,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
         isMounted = false;
         stopCameraMonitoring();
     }
-  }, [cameraEnabled, analyzeCameraFeed, stopCameraMonitoring, toast]);
+  }, [cameraEnabled, toast]);
 
   // Sync camera mic with auto-mute status
   useEffect(() => {
