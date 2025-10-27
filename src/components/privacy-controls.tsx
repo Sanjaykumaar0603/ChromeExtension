@@ -75,6 +75,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   }, []);
 
   const analyzeCameraFeed = useCallback(async () => {
+    if (cameraStatus === 'analyzing') return;
     const frame = captureFrame();
     if (!frame) return;
 
@@ -85,26 +86,28 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
         referencePhotoDataUri: referencePhoto,
       });
 
-      if (!result.personDetected) {
+      if (result && !result.personDetected) {
         if (!absenceTimerRef.current) {
+          // Person just went missing, start the timer
           absenceTimerRef.current = setTimeout(() => {
             toast({ title: 'Privacy Alert', description: 'You have been away for 5 seconds. Turning off camera.' });
-            setCameraEnabled(false); // This will trigger the cleanup effect
+            setCameraEnabled(false); // This will trigger the cleanup effect via useEffect
           }, 5000);
         }
       } else {
+        // Person is detected, clear any absence timer
         if (absenceTimerRef.current) {
           clearTimeout(absenceTimerRef.current);
           absenceTimerRef.current = null;
         }
       }
-      setCameraStatus('on');
     } catch (error) {
       console.error('Error analyzing camera feed:', error);
       toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
-      setCameraStatus('on');
+    } finally {
+        setCameraStatus('on');
     }
-  }, [captureFrame, referencePhoto, toast]);
+  }, [captureFrame, referencePhoto, toast, cameraStatus]);
   
   const stopCameraMonitoring = useCallback(() => {
     if (analysisIntervalRef.current) {
@@ -132,9 +135,14 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
           cameraStreamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
+            await videoRef.current.play();
           }
           setCameraStatus('on');
-          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 1000); // Check every second
+          // Start analysis after a short delay to ensure video is playing
+          setTimeout(() => {
+            analysisIntervalRef.current = setInterval(analyzeCameraFeed, 1000); // Check every second
+          }, 500);
+
         } catch (error) {
           console.error('Error accessing camera:', error);
           setHasCameraPermission(false);
