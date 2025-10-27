@@ -18,6 +18,8 @@ import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
 import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
 import { useMicrophone } from '@/hooks/use-microphone';
 import { AudioVisualizer } from './AudioVisualizer';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
 
 export function PrivacyControls() {
   const { toast } = useToast();
@@ -40,6 +42,7 @@ export function PrivacyControls() {
 
   // Camera state
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [personDescription, setPersonDescription] = useState('A person sitting at a desk');
   const [cameraStatus, setCameraStatus] = useState<'on' | 'off' | 'analyzing'>('off');
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -58,7 +61,7 @@ export function PrivacyControls() {
 
 
   const captureFrame = useCallback(() => {
-    if (!videoRef.current || !videoRef.current.srcObject) return null;
+    if (!videoRef.current || !videoRef.current.srcObject || videoRef.current.paused || videoRef.current.ended || videoRef.current.videoWidth === 0) return null;
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
@@ -91,35 +94,12 @@ export function PrivacyControls() {
       setCameraStatus('on');
     }
   }, [captureFrame, personDescription, toast]);
-
-  const startCameraMonitoring = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      cameraStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setCameraStatus('on');
-      // Start analysis interval
-      analysisIntervalRef.current = setInterval(analyzeCameraFeed, 5000); // Analyze every 5 seconds
-    } catch (err) {
-      console.error('Error accessing camera:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Permission Denied',
-        description: 'Could not access the camera.',
-      });
-      setCameraEnabled(false);
-    }
-  }, [toast, analyzeCameraFeed]);
-
+  
   const stopCameraMonitoring = useCallback(() => {
-    // Stop analysis interval
     if (analysisIntervalRef.current) {
       clearInterval(analysisIntervalRef.current);
       analysisIntervalRef.current = null;
     }
-    // Stop camera stream
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current = null;
     if (videoRef.current) {
@@ -129,13 +109,40 @@ export function PrivacyControls() {
   }, []);
 
   useEffect(() => {
-    if (cameraEnabled) {
-      startCameraMonitoring();
-    } else {
-      stopCameraMonitoring();
+    const getCameraPermission = async () => {
+      if (cameraEnabled) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({video: true});
+          setHasCameraPermission(true);
+          cameraStreamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+          setCameraStatus('on');
+          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 5000);
+        } catch (error) {
+          console.error('Error accessing camera:', error);
+          setHasCameraPermission(false);
+          toast({
+            variant: 'destructive',
+            title: 'Camera Access Denied',
+            description: 'Please enable camera permissions in your browser settings.',
+          });
+          setCameraEnabled(false);
+          setCameraStatus('off');
+        }
+      } else {
+        stopCameraMonitoring();
+        setHasCameraPermission(null);
+      }
+    };
+    
+    getCameraPermission();
+    
+    return () => {
+        stopCameraMonitoring();
     }
-    return () => stopCameraMonitoring(); // Cleanup on unmount
-  }, [cameraEnabled, startCameraMonitoring, stopCameraMonitoring]);
+  }, [cameraEnabled, analyzeCameraFeed, stopCameraMonitoring, toast]);
 
   // Sync camera mic with auto-mute status
   useEffect(() => {
@@ -232,21 +239,28 @@ export function PrivacyControls() {
             </div>
           </div>
           <div className="bg-secondary rounded-lg aspect-video flex items-center justify-center overflow-hidden">
-            {cameraStatus === 'off' ? (
-              <div className="text-muted-foreground flex flex-col items-center gap-2">
-                <VideoOff className="h-12 w-12" />
-                <p>Camera is off</p>
-              </div>
-            ) : (
-              <video
+            <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover"
-              ></video>
+                className={`w-full h-full object-cover ${cameraStatus === 'off' ? 'hidden' : ''}`}
+            ></video>
+            {cameraStatus === 'off' && (
+              <div className="text-muted-foreground flex flex-col items-center gap-2">
+                <VideoOff className="h-12 w-12" />
+                <p>Camera is off</p>
+              </div>
             )}
           </div>
+           {hasCameraPermission === false && (
+              <Alert variant="destructive">
+                <AlertTitle>Camera Access Required</AlertTitle>
+                <AlertDescription>
+                  Please allow camera access to use this feature.
+                </AlertDescription>
+              </Alert>
+            )}
         </CardContent>
         <CardFooter>
           <div

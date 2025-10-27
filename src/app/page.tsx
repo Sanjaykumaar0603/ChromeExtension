@@ -10,8 +10,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShieldCheck, LogOut } from 'lucide-react';
+import { ShieldCheck, LogOut, Globe, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PrivacyControls } from '@/components/privacy-controls';
+import { UrlManagement } from '@/components/url-management';
 
 export default function Home() {
   const { user, logout } = useAuth();
@@ -44,7 +46,24 @@ export default function Home() {
           </Button>
         </CardHeader>
         <CardContent>
-           <p className="text-center text-muted-foreground">App content will go here.</p>
+          <Tabs defaultValue="privacy" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="privacy">
+                <Shield className="mr-2 h-4 w-4" />
+                Privacy
+              </TabsTrigger>
+              <TabsTrigger value="pinger">
+                <Globe className="mr-2 h-4 w-4" />
+                Pinger
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="privacy" className="mt-4">
+              <PrivacyControls />
+            </TabsContent>
+            <TabsContent value="pinger" className="mt-4">
+              <UrlManagement />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </main>
