@@ -64,7 +64,7 @@ export function UrlManagement() {
             ? {
                 ...u,
                 pingHistory: [...(u.pingHistory || []), newHistoryEntry].slice(-20),
-                lastPingTime: isManual ? u.lastPingTime : Date.now(),
+                lastPingTime: Date.now(),
               }
             : u
         )
@@ -80,7 +80,7 @@ export function UrlManagement() {
             ? {
                 ...u,
                 pingHistory: [...(u.pingHistory || []), newHistoryEntry].slice(-20),
-                lastPingTime: isManual ? u.lastPingTime : Date.now(),
+                lastPingTime: Date.now(),
               }
             : u
         )
@@ -89,30 +89,28 @@ export function UrlManagement() {
   }, [setUrls]);
 
   useEffect(() => {
-    // This function sets up and tears down timers.
-    // It should run whenever the list of URLs changes.
+    // This effect manages timers for URLs.
     const currentTimers = timersRef.current;
+    const urlIds = new Set(urls.map(u => u.id));
 
+    // Start timers for new URLs
     urls.forEach(urlItem => {
-      // If a timer already exists for this URL, don't create a new one.
-      if (currentTimers[urlItem.id]) {
-        return;
-      }
-      
-      const interval = urlItem.pingInterval * 60 * 1000;
-      if (interval > 0) {
-        // Initial ping is delayed slightly to allow UI to settle.
-        setTimeout(() => handlePingUrl(urlItem), 1000);
-        
-        currentTimers[urlItem.id] = setInterval(() => {
-          handlePingUrl(urlItem);
-        }, interval);
+      if (!currentTimers[urlItem.id]) {
+        const interval = urlItem.pingInterval * 60 * 1000;
+        if (interval > 0) {
+          // Initial ping is delayed slightly to allow UI to settle.
+          setTimeout(() => handlePingUrl(urlItem, false), 1000);
+          
+          currentTimers[urlItem.id] = setInterval(() => {
+            handlePingUrl(urlItem, false);
+          }, interval);
+        }
       }
     });
 
-    // Cleanup: find timers for URLs that no longer exist.
+    // Cleanup: find and clear timers for URLs that no longer exist.
     Object.keys(currentTimers).forEach(timerId => {
-        if (!urls.find(u => u.id === timerId)) {
+        if (!urlIds.has(timerId)) {
             clearInterval(currentTimers[timerId]);
             delete currentTimers[timerId];
         }
@@ -123,7 +121,6 @@ export function UrlManagement() {
       Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
     };
-    // The dependency array is intentionally just [urls]. `handlePingUrl` is stable due to useCallback.
   }, [urls, handlePingUrl]);
 
 
@@ -156,16 +153,13 @@ export function UrlManagement() {
   };
 
   const handleRemoveUrl = (id: string) => {
-    if (timersRef.current[id]) {
-      clearInterval(timersRef.current[id]);
-      delete timersRef.current[id];
-    }
     setUrls((prevUrls) => prevUrls.filter((url) => url.id !== id));
     setPingResults((prevResults) => {
       const newResults = { ...prevResults };
       delete newResults[id];
       return newResults;
     });
+    // The useEffect will handle clearing the timer.
     toast({ title: 'Success', description: 'URL removed.' });
   };
 
