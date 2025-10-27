@@ -94,9 +94,7 @@ export function UrlManagement() {
     }
     const interval = urlItem.pingInterval * 60 * 1000;
     if (interval > 0) {
-      // Initial ping
-      handlePingUrl(urlItem);
-      // Scheduled pings
+      handlePingUrl(urlItem); // Initial ping
       timersRef.current[urlItem.id] = setInterval(() => {
         handlePingUrl(urlItem);
       }, interval);
@@ -104,14 +102,17 @@ export function UrlManagement() {
   }, [handlePingUrl]);
 
   useEffect(() => {
-    urls.forEach(schedulePing);
+    urls.forEach(urlItem => {
+        if (!timersRef.current[urlItem.id]) {
+            schedulePing(urlItem);
+        }
+    });
 
     return () => {
       Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
     };
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
+  }, [urls, schedulePing]);
 
 
   const handleAddUrl = () => {
@@ -129,7 +130,6 @@ export function UrlManagement() {
         formattedUrl = 'https://' + formattedUrl;
     }
 
-
     const newUrlItem: SavedUrl = {
       id: Date.now().toString(),
       url: formattedUrl,
@@ -138,7 +138,6 @@ export function UrlManagement() {
     };
 
     setUrls((prev) => [...prev, newUrlItem]);
-    schedulePing(newUrlItem);
     setNewUrl('');
     setNewPingInterval(5);
     toast({ title: 'Success', description: 'URL added and monitoring started.' });
@@ -176,8 +175,7 @@ export function UrlManagement() {
   const getChartData = (urlItem: SavedUrl) => {
       return (urlItem.pingHistory || []).map(h => ({
           time: new Date(h.timestamp).toLocaleTimeString(),
-          duration: h.status === 'error' ? 0 : h.duration,
-          status: h.status
+          duration: h.status === 'error' ? null : h.duration,
       }));
   }
 
@@ -236,15 +234,18 @@ export function UrlManagement() {
                      {expandedUrlId === urlItem.id && (urlItem.pingHistory || []).length > 0 && (
                         <div className="mt-4 h-40">
                              <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={getChartData(urlItem)}>
+                                <LineChart data={getChartData(urlItem)} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="time" fontSize={10} />
                                 <YAxis fontSize={10} unit="ms" />
-                                <Tooltip contentStyle={{
-                                    backgroundColor: 'hsl(var(--background))',
-                                    borderColor: 'hsl(var(--border))'
-                                }}/>
-                                <Line type="monotone" dataKey="duration" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                                <Tooltip
+                                    contentStyle={{
+                                        backgroundColor: 'hsl(var(--background))',
+                                        borderColor: 'hsl(var(--border))'
+                                    }}
+                                    labelStyle={{ color: 'hsl(var(--foreground))' }}
+                                />
+                                <Line type="monotone" dataKey="duration" name="Response time" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} connectNulls />
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>
