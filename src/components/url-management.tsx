@@ -86,41 +86,35 @@ export function UrlManagement() {
         )
       );
     }
-  }, [setUrls]);
+  }, [setUrls, setPingResults]);
 
   useEffect(() => {
     const currentTimers = timersRef.current;
-    const urlIds = new Set(urls.map(u => u.id));
-
-    // Start timers for new URLs
+    
+    // Set up timers for all URLs
     urls.forEach(urlItem => {
-      if (!currentTimers[urlItem.id]) {
-        const interval = urlItem.pingInterval * 60 * 1000;
-        if (interval > 0) {
-          // Initial ping is delayed slightly to allow UI to settle.
-          handlePingUrl(urlItem, false);
-          
-          currentTimers[urlItem.id] = setInterval(() => {
-            handlePingUrl(urlItem, false);
-          }, interval);
-        }
-      }
-    });
-
-    // Cleanup: find and clear timers for URLs that no longer exist.
-    Object.keys(currentTimers).forEach(timerId => {
-        if (!urlIds.has(timerId)) {
-            clearInterval(currentTimers[timerId]);
-            delete currentTimers[timerId];
+        if (!currentTimers[urlItem.id]) {
+            const interval = urlItem.pingInterval * 60 * 1000;
+            if (interval > 0) {
+                // Initial ping to get immediate feedback
+                handlePingUrl(urlItem);
+                
+                // Set up the interval
+                currentTimers[urlItem.id] = setInterval(() => {
+                    handlePingUrl(urlItem);
+                }, interval);
+            }
         }
     });
 
+    // Cleanup function runs when component unmounts
     return () => {
-      // Cleanup all timers when the component unmounts.
-      Object.values(timersRef.current).forEach(clearInterval);
+      Object.values(currentTimers).forEach(clearInterval);
       timersRef.current = {};
     };
-  }, [urls, handlePingUrl]);
+    // This effect should only run once on mount, so we pass an empty dependency array.
+    // The handlePingUrl is wrapped in useCallback to be stable.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const handleAddUrl = () => {
@@ -144,6 +138,15 @@ export function UrlManagement() {
       pingInterval: newPingInterval,
       pingHistory: [],
     };
+    
+    // Add the new timer
+    const interval = newUrlItem.pingInterval * 60 * 1000;
+     if (interval > 0) {
+        handlePingUrl(newUrlItem); // Ping immediately
+        timersRef.current[newUrlItem.id] = setInterval(() => {
+            handlePingUrl(newUrlItem);
+        }, interval);
+    }
 
     setUrls((prev) => [...prev, newUrlItem]);
     setNewUrl('');
