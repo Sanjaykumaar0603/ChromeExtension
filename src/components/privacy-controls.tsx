@@ -73,12 +73,31 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
     ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
     return canvas.toDataURL('image/jpeg');
   }, []);
+  
+  const stopCameraMonitoring = useCallback(() => {
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
+      analysisIntervalRef.current = null;
+    }
+     if (absenceTimerRef.current) {
+      clearTimeout(absenceTimerRef.current);
+      absenceTimerRef.current = null;
+    }
+    if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraStatus('off');
+  }, []);
 
   const analyzeCameraFeed = useCallback(async () => {
     if (cameraStatus === 'analyzing') return;
     const frame = captureFrame();
     if (!frame) {
-      setCameraStatus('on');
+      if(cameraEnabled) setCameraStatus('on');
       return;
     }
 
@@ -108,28 +127,9 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
       console.error('Error analyzing camera feed:', error);
       toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
     } finally {
-        setCameraStatus('on');
+        if(cameraEnabled) setCameraStatus('on');
     }
-  }, [captureFrame, referencePhoto, toast, cameraStatus]);
-  
-  const stopCameraMonitoring = useCallback(() => {
-    if (analysisIntervalRef.current) {
-      clearInterval(analysisIntervalRef.current);
-      analysisIntervalRef.current = null;
-    }
-     if (absenceTimerRef.current) {
-      clearTimeout(absenceTimerRef.current);
-      absenceTimerRef.current = null;
-    }
-    if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
-        cameraStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setCameraStatus('off');
-  }, []);
+  }, [captureFrame, referencePhoto, toast, cameraStatus, cameraEnabled]);
 
   useEffect(() => {
     let isMounted = true;
@@ -145,12 +145,14 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
           cameraStreamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            videoRef.current.play().catch(e => console.error("Video play interrupted", e));
+             if (videoRef.current.paused) {
+                await videoRef.current.play().catch(e => console.error("Video play interrupted", e));
+             }
           }
           setCameraStatus('on');
           
           if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
-          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 1000); // Check every second
+          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 2000); 
 
         } catch (error) {
           if (!isMounted) return;
