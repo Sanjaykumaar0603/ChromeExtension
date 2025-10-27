@@ -97,9 +97,14 @@ export function UrlManagement() {
     }
   }, [handlePingUrl]);
 
-  useEffect(() => {
-    urls.forEach(urlItem => schedulePing(urlItem));
+   useEffect(() => {
+    urls.forEach(urlItem => {
+        if (!timersRef.current[urlItem.id]) {
+            schedulePing(urlItem);
+        }
+    });
 
+    // Cleanup on component unmount
     return () => {
       Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
