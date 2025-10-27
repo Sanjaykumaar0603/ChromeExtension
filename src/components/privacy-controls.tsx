@@ -62,6 +62,24 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
     }
   };
 
+  const stopCameraMonitoring = useCallback(() => {
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
+      analysisIntervalRef.current = null;
+    }
+    if (absenceTimerRef.current) {
+      clearTimeout(absenceTimerRef.current);
+      absenceTimerRef.current = null;
+    }
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraStatus('off');
+  }, []);
 
   const captureFrame = useCallback(() => {
     if (!videoRef.current || !videoRef.current.srcObject || videoRef.current.paused || videoRef.current.ended || videoRef.current.videoWidth === 0) return null;
@@ -74,30 +92,11 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
     return canvas.toDataURL('image/jpeg');
   }, []);
   
-  const stopCameraMonitoring = useCallback(() => {
-    if (analysisIntervalRef.current) {
-      clearInterval(analysisIntervalRef.current);
-      analysisIntervalRef.current = null;
-    }
-     if (absenceTimerRef.current) {
-      clearTimeout(absenceTimerRef.current);
-      absenceTimerRef.current = null;
-    }
-    if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
-        cameraStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setCameraStatus('off');
-  }, []);
-
   const analyzeCameraFeed = useCallback(async () => {
-    if (cameraStatus === 'analyzing') return;
+    if (cameraStatus === 'analyzing' || !cameraEnabled) return;
+    
     const frame = captureFrame();
     if (!frame) {
-      if(cameraEnabled) setCameraStatus('on');
       return;
     }
 
@@ -127,52 +126,56 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
       console.error('Error analyzing camera feed:', error);
       toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
     } finally {
-        if(cameraEnabled) setCameraStatus('on');
+        // Only set back to 'on' if the camera is still supposed to be enabled.
+        if (cameraEnabled) {
+          setCameraStatus('on');
+        }
     }
-  }, [captureFrame, referencePhoto, toast, cameraStatus, cameraEnabled]);
+  }, [captureFrame, referencePhoto, toast, cameraEnabled, cameraStatus]);
 
   useEffect(() => {
     let isMounted = true;
+    
     const getCameraPermission = async () => {
-      if (cameraEnabled) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({video: true});
-          if (!isMounted) {
-            stream.getTracks().forEach(track => track.stop());
-            return;
-          }
-          setHasCameraPermission(true);
-          cameraStreamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-             if (videoRef.current.paused) {
-                await videoRef.current.play().catch(e => console.error("Video play interrupted", e));
-             }
-          }
-          setCameraStatus('on');
-          
-          if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
-          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 2000); 
-
-        } catch (error) {
-          if (!isMounted) return;
-          console.error('Error accessing camera:', error);
-          setHasCameraPermission(false);
-          toast({
-            variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: 'Please enable camera permissions in your browser settings.',
-          });
-          setCameraEnabled(false);
-          setCameraStatus('off');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({video: true});
+        if (!isMounted) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
         }
-      } else {
-        stopCameraMonitoring();
-        setHasCameraPermission(null);
+        setHasCameraPermission(true);
+        cameraStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+           if (videoRef.current.paused) {
+              await videoRef.current.play().catch(e => console.error("Video play interrupted", e));
+           }
+        }
+        setCameraStatus('on');
+        
+        if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
+        analysisIntervalRef.current = setInterval(analyzeCameraFeed, 2000); 
+
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings.',
+        });
+        setCameraEnabled(false);
+        setCameraStatus('off');
       }
     };
     
-    getCameraPermission();
+    if (cameraEnabled) {
+      getCameraPermission();
+    } else {
+      stopCameraMonitoring();
+      setHasCameraPermission(null);
+    }
     
     return () => {
         isMounted = false;
@@ -268,9 +271,9 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
                 autoPlay
                 playsInline
                 muted
-                className={`w-full h-full object-cover ${cameraStatus === 'off' ? 'hidden' : ''}`}
+                className={`w-full h-full object-cover ${!cameraEnabled || cameraStatus === 'off' ? 'hidden' : ''}`}
             ></video>
-            {cameraStatus === 'off' && (
+            {(!cameraEnabled || cameraStatus === 'off') && (
               <div className="text-muted-foreground flex flex-col items-center gap-2">
                 <VideoOff className="h-12 w-12" />
                 <p>Camera is off</p>
