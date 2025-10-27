@@ -14,12 +14,19 @@ import { ShieldCheck, LogOut, Globe, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PrivacyControls } from '@/components/privacy-controls';
 import { UrlManagement } from '@/components/url-management';
+import { useLocalStorage } from '@/hooks/use-local-storage';
+import { SetupCameraProfile } from '@/components/setup-camera-profile';
 
 export default function Home() {
   const { user, logout } = useAuth();
+  const [referencePhoto, setReferencePhoto] = useLocalStorage<string | null>('referencePhoto', null);
 
   if (!user) {
     return <Login />;
+  }
+
+  if (!referencePhoto) {
+    return <SetupCameraProfile onPhotoTaken={setReferencePhoto} />;
   }
 
   return (
@@ -58,7 +65,7 @@ export default function Home() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="privacy" className="mt-4">
-              <PrivacyControls />
+              <PrivacyControls referencePhoto={referencePhoto} />
             </TabsContent>
             <TabsContent value="pinger" className="mt-4">
               <UrlManagement />

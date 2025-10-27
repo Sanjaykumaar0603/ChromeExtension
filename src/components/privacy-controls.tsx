@@ -14,14 +14,17 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, BrainCircuit } from 'lucide-react';
 import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
 import { useMicrophone } from '@/hooks/use-microphone';
 import { AudioVisualizer } from './AudioVisualizer';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
+interface PrivacyControlsProps {
+  referencePhoto: string;
+}
 
-export function PrivacyControls() {
+export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   const { toast } = useToast();
 
   // Mic state
@@ -43,11 +46,11 @@ export function PrivacyControls() {
   // Camera state
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-  const [personDescription, setPersonDescription] = useState('A person sitting at a desk');
   const [cameraStatus, setCameraStatus] = useState<'on' | 'off' | 'analyzing'>('off');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const absenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Mic Toggle
   const handleMicToggle = (enabled: boolean) => {
@@ -78,27 +81,39 @@ export function PrivacyControls() {
     setCameraStatus('analyzing');
     try {
       const result = await detectPersonAndTurnOffCamera({
-        videoDataUri: frame,
-        loggedInPersonDescription: personDescription,
+        videoFrameDataUri: frame,
+        referencePhotoDataUri: referencePhoto,
       });
 
       if (!result.personDetected) {
-        toast({ title: 'Privacy Alert', description: 'You are not in the frame. Turning off camera.' });
-        setCameraEnabled(false); // This will trigger the cleanup effect
+        if (!absenceTimerRef.current) {
+          absenceTimerRef.current = setTimeout(() => {
+            toast({ title: 'Privacy Alert', description: 'You have been away for 5 seconds. Turning off camera.' });
+            setCameraEnabled(false); // This will trigger the cleanup effect
+          }, 5000);
+        }
       } else {
-         setCameraStatus('on');
+        if (absenceTimerRef.current) {
+          clearTimeout(absenceTimerRef.current);
+          absenceTimerRef.current = null;
+        }
       }
+      setCameraStatus('on');
     } catch (error) {
       console.error('Error analyzing camera feed:', error);
       toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
       setCameraStatus('on');
     }
-  }, [captureFrame, personDescription, toast]);
+  }, [captureFrame, referencePhoto, toast]);
   
   const stopCameraMonitoring = useCallback(() => {
     if (analysisIntervalRef.current) {
       clearInterval(analysisIntervalRef.current);
       analysisIntervalRef.current = null;
+    }
+     if (absenceTimerRef.current) {
+      clearTimeout(absenceTimerRef.current);
+      absenceTimerRef.current = null;
     }
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     cameraStreamRef.current = null;
@@ -119,7 +134,7 @@ export function PrivacyControls() {
             videoRef.current.srcObject = stream;
           }
           setCameraStatus('on');
-          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 5000);
+          analysisIntervalRef.current = setInterval(analyzeCameraFeed, 1000); // Check every second
         } catch (error) {
           console.error('Error accessing camera:', error);
           setHasCameraPermission(false);
@@ -163,7 +178,7 @@ export function PrivacyControls() {
 
   const cameraStatusInfo = {
     off: { icon: VideoOff, text: 'Camera Off', color: 'text-muted-foreground' },
-    on: { icon: Video, text: 'Camera On', color: 'text-green-500' },
+    on: { icon: Video, text: 'Camera On & Monitored', color: 'text-green-500' },
     analyzing: {
       icon: BrainCircuit,
       text: 'Analyzing...',
@@ -225,19 +240,6 @@ export function PrivacyControls() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="person-description">Describe Yourself</Label>
-            <div className="flex items-center gap-2">
-              <User className="text-muted-foreground" />
-              <Input
-                id="person-description"
-                placeholder="e.g., person with glasses and a blue shirt"
-                value={personDescription}
-                onChange={(e) => setPersonDescription(e.target.value)}
-                disabled={!cameraEnabled}
-              />
-            </div>
-          </div>
           <div className="bg-secondary rounded-lg aspect-video flex items-center justify-center overflow-hidden">
             <video
                 ref={videoRef}

@@ -12,21 +12,23 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const DetectPersonAndTurnOffCameraInputSchema = z.object({
-  videoDataUri: z
+  videoFrameDataUri: z
     .string()
     .describe(
-      "A video feed as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+      "A single frame from a video feed as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
-  loggedInPersonDescription: z
+  referencePhotoDataUri: z
     .string()
-    .describe('A description of the logged-in person for identification.'),
+    .describe(
+      "A reference photo of the person to detect, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+    ),
 });
 export type DetectPersonAndTurnOffCameraInput = z.infer<typeof DetectPersonAndTurnOffCameraInputSchema>;
 
 const DetectPersonAndTurnOffCameraOutputSchema = z.object({
   personDetected: z
     .boolean()
-    .describe('Whether or not the logged-in person is detected in the video feed.'),
+    .describe('Whether or not the person from the reference photo is detected in the video frame.'),
 });
 export type DetectPersonAndTurnOffCameraOutput = z.infer<typeof DetectPersonAndTurnOffCameraOutputSchema>;
 
@@ -40,12 +42,15 @@ const detectPersonAndTurnOffCameraPrompt = ai.definePrompt({
   name: 'detectPersonAndTurnOffCameraPrompt',
   input: {schema: DetectPersonAndTurnOffCameraInputSchema},
   output: {schema: DetectPersonAndTurnOffCameraOutputSchema},
-  prompt: `You are an AI assistant that analyzes a video feed and determines if the logged-in person is present.
+  prompt: `You are an AI assistant that analyzes a video frame to determine if a specific person is present.
 
-  Description of logged-in person: {{{loggedInPersonDescription}}}
-  Video Feed: {{media url=videoDataUri}}
+  You will be given a reference photo of the person to look for.
+  Reference Photo: {{media url=referencePhotoDataUri}}
 
-  Based on the video feed and the description of the logged-in person, determine if the person is present in the video feed.
+  You will also be given a frame from a video feed.
+  Video Frame: {{media url=videoFrameDataUri}}
+
+  Compare the video frame to the reference photo. Determine if the person from the reference photo is present in the video frame.
   Return true if the person is present, and false if the person is not present.
   Set the personDetected output field accordingly.
   `,
