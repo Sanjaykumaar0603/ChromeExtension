@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -34,10 +35,11 @@ export function UrlManagement() {
 
   const handlePingUrl = useCallback(async (urlItem: SavedUrl, isManual: boolean = false) => {
     const startTime = Date.now();
-    setPingResults((prev) => ({ ...prev, [urlItem.id]: { status: 'pending', message: 'Pinging...' } }));
+    if (!isManual) {
+      setPingResults((prev) => ({ ...prev, [urlItem.id]: { status: 'pending', message: 'Pinging...' } }));
+    }
 
     try {
-      // Using a more reliable CORS proxy for browser-side requests
       const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(urlItem.url)}`);
       const duration = Date.now() - startTime;
 
@@ -61,8 +63,8 @@ export function UrlManagement() {
           u.id === urlItem.id
             ? {
                 ...u,
-                pingHistory: [...(u.pingHistory || []), newHistoryEntry].slice(-20), // Keep last 20 pings
-                lastPingTime: isManual ? u.lastPingTime : Date.now(), // Only update lastPingTime on automatic pings
+                pingHistory: [...(u.pingHistory || []), newHistoryEntry].slice(-20),
+                lastPingTime: isManual ? u.lastPingTime : Date.now(),
               }
             : u
         )
@@ -84,33 +86,45 @@ export function UrlManagement() {
         )
       );
     }
-  }, [setUrls, toast]);
-
-  const schedulePing = useCallback((urlItem: SavedUrl) => {
-    if (timersRef.current[urlItem.id]) {
-      clearInterval(timersRef.current[urlItem.id]);
-    }
-    const interval = urlItem.pingInterval * 60 * 1000;
-    if (interval > 0) {
-      handlePingUrl(urlItem); // Initial ping
-      timersRef.current[urlItem.id] = setInterval(() => {
-        handlePingUrl(urlItem);
-      }, interval);
-    }
-  }, [handlePingUrl]);
+  }, [setUrls]);
 
   useEffect(() => {
+    // This function sets up and tears down timers.
+    // It should run whenever the list of URLs changes.
+    const currentTimers = timersRef.current;
+
     urls.forEach(urlItem => {
-        if (!timersRef.current[urlItem.id]) {
-            schedulePing(urlItem);
+      // If a timer already exists for this URL, don't create a new one.
+      if (currentTimers[urlItem.id]) {
+        return;
+      }
+      
+      const interval = urlItem.pingInterval * 60 * 1000;
+      if (interval > 0) {
+        // Initial ping is delayed slightly to allow UI to settle.
+        setTimeout(() => handlePingUrl(urlItem), 1000);
+        
+        currentTimers[urlItem.id] = setInterval(() => {
+          handlePingUrl(urlItem);
+        }, interval);
+      }
+    });
+
+    // Cleanup: find timers for URLs that no longer exist.
+    Object.keys(currentTimers).forEach(timerId => {
+        if (!urls.find(u => u.id === timerId)) {
+            clearInterval(currentTimers[timerId]);
+            delete currentTimers[timerId];
         }
     });
 
     return () => {
+      // Cleanup all timers when the component unmounts.
       Object.values(timersRef.current).forEach(clearInterval);
       timersRef.current = {};
     };
-  }, [urls, schedulePing]);
+    // The dependency array is intentionally just [urls]. `handlePingUrl` is stable due to useCallback.
+  }, [urls, handlePingUrl]);
 
 
   const handleAddUrl = () => {
