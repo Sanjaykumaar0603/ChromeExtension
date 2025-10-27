@@ -37,10 +37,8 @@ export function UrlManagement() {
     setPingResults((prev) => ({ ...prev, [urlItem.id]: { status: 'pending', message: 'Pinging...' } }));
 
     try {
-      // Using a CORS proxy for browser-side requests
-      const response = await fetch(`https://cors-anywhere.herokuapp.com/${urlItem.url}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }
-      });
+      // Using a more reliable CORS proxy for browser-side requests
+      const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(urlItem.url)}`);
       const duration = Date.now() - startTime;
 
       const newHistoryEntry = { timestamp: Date.now(), status: 'success' as const, duration };
@@ -86,7 +84,7 @@ export function UrlManagement() {
         )
       );
     }
-  }, [setUrls]);
+  }, [setUrls, toast]);
 
   const schedulePing = useCallback((urlItem: SavedUrl) => {
     if (timersRef.current[urlItem.id]) {
