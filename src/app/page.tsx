@@ -1,7 +1,5 @@
 "use client";
 
-import { useAuth } from '@/hooks/use-auth';
-import { Login } from '@/components/login';
 import {
   Card,
   CardContent,
@@ -19,12 +17,7 @@ import { SetupCameraProfile } from '@/components/setup-camera-profile';
 import { ProfileSettings } from '@/components/profile-settings';
 
 export default function Home() {
-  const { user, logout } = useAuth();
   const [referencePhoto, setReferencePhoto] = useLocalStorage<string | null>('referencePhoto', null);
-
-  if (!user) {
-    return <Login />;
-  }
 
   if (!referencePhoto) {
     return <SetupCameraProfile onPhotoTaken={setReferencePhoto} />;
@@ -43,15 +36,6 @@ export default function Home() {
           <CardDescription className="pt-2">
             Your personal dashboard for web privacy and utility.
           </CardDescription>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={logout}
-            className="absolute top-2 right-2"
-            aria-label="Log out"
-          >
-            <LogOut className="h-5 w-5" />
-          </Button>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="privacy" className="w-full">
