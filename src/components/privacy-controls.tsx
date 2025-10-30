@@ -45,6 +45,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
 
   // Camera state
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraOffDuration, setCameraOffDuration] = useState(5);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const [cameraStatus, setCameraStatus] = useState<'on' | 'off' | 'analyzing'>('off');
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -111,9 +112,9 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
         if (!absenceTimerRef.current) {
           // Person just went missing, start the timer
           absenceTimerRef.current = setTimeout(() => {
-            toast({ title: 'Privacy Alert', description: 'You have been away for 5 seconds. Turning off camera.' });
+            toast({ title: 'Privacy Alert', description: `You have been away for ${cameraOffDuration} seconds. Turning off camera.` });
             setCameraEnabled(false); // This will trigger the cleanup effect via useEffect
-          }, 5000);
+          }, cameraOffDuration * 1000);
         }
       } else {
         // Person is detected, clear any absence timer
@@ -131,7 +132,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
           setCameraStatus('on');
         }
     }
-  }, [captureFrame, referencePhoto, toast, cameraEnabled, cameraStatus]);
+  }, [captureFrame, referencePhoto, toast, cameraEnabled, cameraStatus, cameraOffDuration]);
 
   useEffect(() => {
     let isMounted = true;
@@ -181,7 +182,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
         isMounted = false;
         stopCameraMonitoring();
     }
-  }, [cameraEnabled, toast]);
+  }, [cameraEnabled, toast, analyzeCameraFeed, stopCameraMonitoring]);
 
   // Sync camera mic with auto-mute status
   useEffect(() => {
