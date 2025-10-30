@@ -80,6 +80,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
       videoRef.current.srcObject = null;
     }
     setCameraStatus('off');
+    setHasCameraPermission(null);
   }, []);
 
   const captureFrame = useCallback(() => {
@@ -134,31 +135,36 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
     }
   }, [captureFrame, referencePhoto, toast, cameraEnabled, cameraStatus, cameraOffDuration]);
 
+  // Effect to handle camera setup and teardown
   useEffect(() => {
+    if (!cameraEnabled) {
+      stopCameraMonitoring();
+      return;
+    }
+
     let isMounted = true;
-    
-    const getCameraPermission = async () => {
+
+    const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({video: true});
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (!isMounted) {
-          stream.getTracks().forEach(track => track.stop());
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
+
         setHasCameraPermission(true);
         cameraStreamRef.current = stream;
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-           // The 'loadedmetadata' event ensures the video dimensions are known before playing.
-           videoRef.current.onloadedmetadata = () => {
-             if (videoRef.current) {
-                videoRef.current.play().catch(e => console.error("Video play interrupted", e));
-                setCameraStatus('on');
-             }
-           };
+          // Play the video once the stream is attached
+          videoRef.current.play().catch(e => console.error("Video play failed:", e));
         }
+
+        setCameraStatus('on');
         
         if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
-        analysisIntervalRef.current = setInterval(analyzeCameraFeed, 2000); 
+        analysisIntervalRef.current = setInterval(analyzeCameraFeed, 2000);
 
       } catch (error) {
         if (!isMounted) return;
@@ -173,19 +179,14 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
         setCameraStatus('off');
       }
     };
-    
-    if (cameraEnabled) {
-      getCameraPermission();
-    } else {
-      stopCameraMonitoring();
-      setHasCameraPermission(null);
-    }
-    
+
+    startCamera();
+
     return () => {
-        isMounted = false;
-        stopCameraMonitoring();
-    }
-  }, [cameraEnabled, toast, analyzeCameraFeed, stopCameraMonitoring]);
+      isMounted = false;
+      stopCameraMonitoring();
+    };
+  }, [cameraEnabled, analyzeCameraFeed, stopCameraMonitoring, toast]);
 
   // Sync camera mic with auto-mute status
   useEffect(() => {
@@ -316,3 +317,5 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
     </div>
   );
 }
+
+    
