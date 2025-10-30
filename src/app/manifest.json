@@ -3,9 +3,9 @@
   "name": "Smart Privacy",
   "version": "1.0",
   "description": "A smart privacy assistant for your browser.",
-  "permissions": ["storage", "alarms", "notifications"],
+  "permissions": ["storage", "alarms", "notifications", "activeTab"],
   "action": {
-    "default_popup": "index.html",
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icon16.png",
       "48": "icon48.png",
