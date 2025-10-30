@@ -95,45 +95,53 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   }, []);
   
   const analyzeCameraFeed = useCallback(async () => {
-    if (cameraStatus === 'analyzing' || !cameraEnabled) return;
-    
-    const frame = captureFrame();
-    if (!frame) {
-      return;
-    }
+    // Use a function to get the current state to avoid stale closures
+    setCameraStatus(currentStatus => {
+        if (currentStatus === 'analyzing') return currentStatus;
+        
+        const frame = captureFrame();
+        if (!frame) {
+            return currentStatus;
+        }
 
-    setCameraStatus('analyzing');
-    try {
-      const result = await detectPersonAndTurnOffCamera({
-        videoFrameDataUri: frame,
-        referencePhotoDataUri: referencePhoto,
-      });
+        (async () => {
+            try {
+                const result = await detectPersonAndTurnOffCamera({
+                    videoFrameDataUri: frame,
+                    referencePhotoDataUri: referencePhoto,
+                });
 
-      if (result && !result.personDetected) {
-        if (!absenceTimerRef.current) {
-          // Person just went missing, start the timer
-          absenceTimerRef.current = setTimeout(() => {
-            toast({ title: 'Privacy Alert', description: `You have been away for ${cameraOffDuration} seconds. Turning off camera.` });
-            setCameraEnabled(false); // This will trigger the cleanup effect via useEffect
-          }, cameraOffDuration * 1000);
-        }
-      } else {
-        // Person is detected, clear any absence timer
-        if (absenceTimerRef.current) {
-          clearTimeout(absenceTimerRef.current);
-          absenceTimerRef.current = null;
-        }
-      }
-    } catch (error) {
-      console.error('Error analyzing camera feed:', error);
-      toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
-    } finally {
-        // Only set back to 'on' if the camera is still supposed to be enabled.
-        if (cameraEnabled) {
-          setCameraStatus('on');
-        }
-    }
-  }, [captureFrame, referencePhoto, toast, cameraEnabled, cameraStatus, cameraOffDuration]);
+                if (result && !result.personDetected) {
+                    if (!absenceTimerRef.current) {
+                        absenceTimerRef.current = setTimeout(() => {
+                            toast({ title: 'Privacy Alert', description: `You have been away for ${cameraOffDuration} seconds. Turning off camera.` });
+                            setCameraEnabled(false);
+                        }, cameraOffDuration * 1000);
+                    }
+                } else {
+                    if (absenceTimerRef.current) {
+                        clearTimeout(absenceTimerRef.current);
+                        absenceTimerRef.current = null;
+                    }
+                }
+            } catch (error) {
+                console.error('Error analyzing camera feed:', error);
+                toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
+            } finally {
+                // Check if still enabled before setting status back to 'on'
+                setCameraEnabled(enabled => {
+                    if (enabled) {
+                        setCameraStatus('on');
+                    }
+                    return enabled;
+                });
+            }
+        })();
+        
+        return 'analyzing';
+    });
+}, [captureFrame, referencePhoto, toast, cameraOffDuration]);
+
 
   // Effect to handle camera setup and teardown
   useEffect(() => {
@@ -157,7 +165,6 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          // Play the video once the stream is attached
           videoRef.current.play().catch(e => console.error("Video play failed:", e));
         }
 
@@ -317,5 +324,3 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
     </div>
   );
 }
-
-    
