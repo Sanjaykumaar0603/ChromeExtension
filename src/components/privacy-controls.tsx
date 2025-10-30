@@ -95,15 +95,16 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   }, []);
   
   const analyzeCameraFeed = useCallback(async () => {
-    // Use a function to get the current state to avoid stale closures
     setCameraStatus(currentStatus => {
-        if (currentStatus === 'analyzing') return currentStatus;
-        
+        if (currentStatus === 'analyzing') {
+             return currentStatus;
+        }
+
         const frame = captureFrame();
         if (!frame) {
             return currentStatus;
         }
-
+        
         (async () => {
             try {
                 const result = await detectPersonAndTurnOffCamera({
@@ -115,7 +116,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
                     if (!absenceTimerRef.current) {
                         absenceTimerRef.current = setTimeout(() => {
                             toast({ title: 'Privacy Alert', description: `You have been away for ${cameraOffDuration} seconds. Turning off camera.` });
-                            setCameraEnabled(false);
+                            setCameraEnabled(false); // This will trigger the cleanup effect
                         }, cameraOffDuration * 1000);
                     }
                 } else {
@@ -128,19 +129,13 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
                 console.error('Error analyzing camera feed:', error);
                 toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
             } finally {
-                // Check if still enabled before setting status back to 'on'
-                setCameraEnabled(enabled => {
-                    if (enabled) {
-                        setCameraStatus('on');
-                    }
-                    return enabled;
-                });
+                setCameraStatus(prevStatus => prevStatus === 'analyzing' ? 'on' : prevStatus);
             }
         })();
-        
+
         return 'analyzing';
     });
-}, [captureFrame, referencePhoto, toast, cameraOffDuration]);
+}, [captureFrame, referencePhoto, cameraOffDuration, toast]);
 
 
   // Effect to handle camera setup and teardown
@@ -252,7 +247,6 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
               min="1"
               value={muteDuration}
               onChange={(e) => setMuteDuration(Number(e.target.value))}
-              disabled={!micEnabled}
             />
           </div>
         </CardContent>
@@ -300,7 +294,6 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
               min="1"
               value={cameraOffDuration}
               onChange={(e) => setCameraOffDuration(Number(e.target.value))}
-              disabled={!cameraEnabled}
             />
           </div>
            {hasCameraPermission === false && (
