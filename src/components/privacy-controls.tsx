@@ -148,11 +148,14 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
         cameraStreamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-           if (videoRef.current.paused) {
-              await videoRef.current.play().catch(e => console.error("Video play interrupted", e));
-           }
+           // The 'loadedmetadata' event ensures the video dimensions are known before playing.
+           videoRef.current.onloadedmetadata = () => {
+             if (videoRef.current) {
+                videoRef.current.play().catch(e => console.error("Video play interrupted", e));
+                setCameraStatus('on');
+             }
+           };
         }
-        setCameraStatus('on');
         
         if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
         analysisIntervalRef.current = setInterval(analyzeCameraFeed, 2000); 
@@ -280,6 +283,17 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
                 <p>Camera is off</p>
               </div>
             )}
+          </div>
+          <div className="space-y-2">
+             <Label htmlFor="camera-off-duration">Turn off after (seconds)</Label>
+            <Input
+              id="camera-off-duration"
+              type="number"
+              min="1"
+              value={cameraOffDuration}
+              onChange={(e) => setCameraOffDuration(Number(e.target.value))}
+              disabled={!cameraEnabled}
+            />
           </div>
            {hasCameraPermission === false && (
               <Alert variant="destructive">
