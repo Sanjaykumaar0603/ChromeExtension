@@ -32,7 +32,7 @@ export function useMicrophone({
       streamRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
+      audioContextRef.current.close().catch(console.error);
       audioContextRef.current = null;
     }
     setMicStatus('off');
