@@ -8,11 +8,13 @@ type MicStatus = 'listening' | 'muted' | 'off';
 interface UseMicrophoneProps {
   silenceThreshold?: number; // seconds
   onMicError?: (error: string) => void;
+  onMute?: () => void;
 }
 
 export function useMicrophone({
   silenceThreshold = 5,
   onMicError,
+  onMute,
 }: UseMicrophoneProps) {
   const [micStatus, setMicStatus] = useState<MicStatus>('off');
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
@@ -87,6 +89,9 @@ export function useMicrophone({
           if (silenceDuration > silenceThreshold && audioTrack.enabled) {
             audioTrack.enabled = false;
             setMicStatus('muted');
+            if (onMute) {
+              onMute();
+            }
           }
         }
       }, 200);
@@ -97,7 +102,7 @@ export function useMicrophone({
       }
       stopMuting();
     }
-  }, [onMicError, silenceThreshold, stopMuting]);
+  }, [onMicError, onMute, silenceThreshold, stopMuting]);
 
   useEffect(() => {
     return () => {

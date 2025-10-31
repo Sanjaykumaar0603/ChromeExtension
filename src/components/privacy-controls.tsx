@@ -27,6 +27,33 @@ interface PrivacyControlsProps {
 export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   const { toast } = useToast();
 
+  const triggerKeyboardShortcut = (key: 'd' | 'e') => {
+    // Check if running in a Chrome extension context
+    if (typeof chrome !== "undefined" && chrome.tabs) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0] && tabs[0].id) {
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            func: (k: string) => {
+              document.dispatchEvent(new KeyboardEvent('keydown', {
+                key: k,
+                code: `Key${k.toUpperCase()}`,
+                metaKey: true, // For Command key on Mac
+                ctrlKey: true,  // For Ctrl key on Windows/Linux
+                bubbles: true,
+                composed: true,
+              }));
+            },
+            args: [key]
+          });
+        }
+      });
+    } else {
+      console.log(`Not in extension context. Would trigger Cmd+${key}`);
+    }
+  };
+
+
   // Mic state
   const [micEnabled, setMicEnabled] = useState(false);
   const [muteDuration, setMuteDuration] = useState(5);
@@ -39,6 +66,10 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
         description: error,
       });
       setMicEnabled(false);
+    },
+    onMute: () => {
+      triggerKeyboardShortcut('d');
+      toast({ title: 'Privacy Alert', description: 'Silence detected. Microphone muted.' });
     }
   });
 
@@ -116,6 +147,7 @@ export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
                     if (!absenceTimerRef.current) {
                         absenceTimerRef.current = setTimeout(() => {
                             toast({ title: 'Privacy Alert', description: `You have been away for ${cameraOffDuration} seconds. Turning off camera.` });
+                            triggerKeyboardShortcut('e');
                             setCameraEnabled(false); // This will trigger the cleanup effect
                         }, cameraOffDuration * 1000);
                     }
