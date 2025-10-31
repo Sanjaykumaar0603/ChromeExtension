@@ -35,7 +35,6 @@ A Chrome extension that helps protect your privacy by providing screen blurring 
    ```bash
    npm run watch
    ```
-4. Move the directory `icons` to `dist`
 
 ## Loading the Extension
 
@@ -75,6 +74,14 @@ npm run prod
 ```
 
 This will create optimized files in the `dist` directory.
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch: `git checkout -b feature/my-new-feature`
+3. Commit your changes: `git commit -am 'Add some feature'`
+4. Push to the branch: `git push origin feature/my-new-feature`
+5. Submit a pull request
 
 ## License
 
