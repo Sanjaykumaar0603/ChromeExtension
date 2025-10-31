@@ -1,0 +1,54 @@
+/* Screen blur effect */
+.screen-blur-extension {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2147483646;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    pointer-events: none;
+    transition: backdrop-filter 0.3s ease-in-out, -webkit-backdrop-filter 0.3s ease-in-out;
+}
+
+/* Selective blur regions */
+.blur-region {
+    position: fixed;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    pointer-events: all;
+    z-index: 2147483647;
+    transition: all 0.2s ease-in-out;
+    border: 2px solid rgba(255,255,255,0.3);
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.blur-region:hover {
+    border-color: rgba(255,255,255,0.5);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.blur-region.drawing {
+    background: rgba(255,255,255,0.1);
+    border: 2px dashed rgba(255,255,255,0.5);
+    pointer-events: none;
+}
+
+.drawing-overlay {
+    position: fixed;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+    z-index: 2147483646;
+}
+
+/* Transitions */
+.hide-text-extension input,
+.hide-text-extension textarea,
+.hide-text-extension [contenteditable="true"] {
+    transition: color 0.2s, text-shadow 0.2s;
+}

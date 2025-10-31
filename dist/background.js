@@ -1,0 +1,1 @@
+(()=>{"use strict";chrome.runtime.onInstalled.addListener(()=>{console.log("Extension installed"),chrome.storage.local.set({blurMode:"none",hoverUnblur:!1})})})();
