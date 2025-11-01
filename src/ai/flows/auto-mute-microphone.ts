@@ -17,13 +17,11 @@ const AnalyzeAudioAndMuteInputSchema = z.object({
     .describe(
       "A short audio clip as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
-  voiceDetectionThreshold: z.number().describe('The sensitivity threshold for voice detection (0-1).'),
-  muteDuration: z.number().describe('The duration (in seconds) to wait before muting after voice is no longer detected.'),
 });
 export type AnalyzeAudioAndMuteInput = z.infer<typeof AnalyzeAudioAndMuteInputSchema>;
 
 const AnalyzeAudioAndMuteOutputSchema = z.object({
-  shouldMute: z.boolean().describe('Whether the microphone should be muted based on voice detection.'),
+  voiceDetected: z.boolean().describe('Whether or not voice was detected in the audio clip.'),
 });
 export type AnalyzeAudioAndMuteOutput = z.infer<typeof AnalyzeAudioAndMuteOutputSchema>;
 
@@ -35,15 +33,11 @@ const prompt = ai.definePrompt({
   name: 'analyzeAudioAndMutePrompt',
   input: {schema: AnalyzeAudioAndMuteInputSchema},
   output: {schema: AnalyzeAudioAndMuteOutputSchema},
-  prompt: `You are an AI assistant that analyzes audio input to determine if the microphone should be muted. You will receive an audio clip as a data URI, a voice detection threshold, and a mute duration.
-
-  Analyze the audio clip and determine if voice is present. Use the voice detection threshold to adjust the sensitivity of voice detection. If voice is not detected for the specified mute duration, then you should recommend that the microphone be muted.
-
+  prompt: `You are an AI assistant that analyzes audio to detect human speech.
+  Analyze the provided audio clip.
   Audio: {{media url=audioDataUri}}
-  Voice Detection Threshold: {{{voiceDetectionThreshold}}}
-  Mute Duration: {{{muteDuration}}}
-
-  Return a JSON object with a single boolean field called "shouldMute". Set "shouldMute" to true if the microphone should be muted; otherwise, set it to false.
+  Determine if human speech is present in the audio.
+  Return a JSON object with a single boolean field "voiceDetected". Set it to true if speech is detected, otherwise set it to false.
   `,
 });
 

@@ -1,3 +1,7 @@
+"use client";
+
+import { useAuth } from '@/hooks/use-auth';
+import { Login } from '@/components/login';
 import {
   Card,
   CardContent,
@@ -6,15 +10,30 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UrlManagement } from '@/components/url-management';
+import { ShieldCheck, LogOut, Globe, Shield, User } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { PrivacyControls } from '@/components/privacy-controls';
-import { ShieldCheck } from 'lucide-react';
+import { UrlManagement } from '@/components/url-management';
+import { useLocalStorage } from '@/hooks/use-local-storage';
+import { SetupCameraProfile } from '@/components/setup-camera-profile';
+import { ProfileSettings } from '@/components/profile-settings';
 
 export default function Home() {
+  const { user, logout } = useAuth();
+  const [referencePhoto, setReferencePhoto] = useLocalStorage<string | null>('referencePhoto', null);
+
+  if (!user) {
+    return <Login />;
+  }
+
+  if (!referencePhoto) {
+    return <SetupCameraProfile onPhotoTaken={setReferencePhoto} />;
+  }
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4 sm:p-8">
-      <Card className="w-full max-w-2xl mx-auto shadow-2xl bg-card">
-        <CardHeader className="text-center">
+    <main className="flex flex-col items-center justify-start bg-background p-4 w-[400px]">
+      <Card className="w-full max-w-2xl mx-auto shadow-none bg-card border-0">
+        <CardHeader className="text-center relative">
           <div className="flex items-center justify-center gap-3">
             <ShieldCheck className="h-8 w-8 text-primary" />
             <CardTitle className="text-3xl font-bold font-headline">
@@ -24,18 +43,43 @@ export default function Home() {
           <CardDescription className="pt-2">
             Your personal dashboard for web privacy and utility.
           </CardDescription>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={logout}
+            className="absolute top-2 right-2"
+            aria-label="Log out"
+          >
+            <LogOut className="h-5 w-5" />
+          </Button>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="privacy" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="privacy">Privacy Controls</TabsTrigger>
-              <TabsTrigger value="urls">URL Manager</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="privacy">
+                <Shield className="mr-2 h-4 w-4" />
+                Privacy
+              </TabsTrigger>
+              <TabsTrigger value="pinger">
+                <Globe className="mr-2 h-4 w-4" />
+                Pinger
+              </TabsTrigger>
+              <TabsTrigger value="profile">
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </TabsTrigger>
             </TabsList>
-            <TabsContent value="privacy" className="mt-6">
-              <PrivacyControls />
+            <TabsContent value="privacy" className="mt-4">
+              <PrivacyControls referencePhoto={referencePhoto} />
             </TabsContent>
-            <TabsContent value="urls" className="mt-6">
+            <TabsContent value="pinger" className="mt-4">
               <UrlManagement />
+            </TabsContent>
+            <TabsContent value="profile" className="mt-4">
+                <ProfileSettings
+                    referencePhoto={referencePhoto}
+                    onRetakePhoto={() => setReferencePhoto(null)}
+                />
             </TabsContent>
           </Tabs>
         </CardContent>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -11,203 +12,236 @@ import {
 } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { analyzeAudioAndMute } from '@/ai/flows/auto-mute-microphone';
+import { Mic, MicOff, Video, VideoOff, BrainCircuit } from 'lucide-react';
 import { detectPersonAndTurnOffCamera } from '@/ai/flows/auto-turn-off-camera';
-import { Mic, MicOff, Video, VideoOff, BrainCircuit, User } from 'lucide-react';
+import { useMicrophone } from '@/hooks/use-microphone';
+import { AudioVisualizer } from './AudioVisualizer';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-export function PrivacyControls() {
+interface PrivacyControlsProps {
+  referencePhoto: string;
+}
+
+export function PrivacyControls({ referencePhoto }: PrivacyControlsProps) {
   const { toast } = useToast();
 
-  const [micEnabled, setMicEnabled] = useState(false);
-  const [sensitivity, setSensitivity] = useState([0.5]);
-  const [muteDuration, setMuteDuration] = useState(5);
-  const [micStatus, setMicStatus] = useState<
-    'listening' | 'muted' | 'off' | 'analyzing'
-  >('off');
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-
-  const [cameraEnabled, setCameraEnabled] = useState(false);
-  const [personDescription, setPersonDescription] = useState(
-    'A person sitting at a desk'
-  );
-  const [cameraStatus, setCameraStatus] = useState<'on' | 'off' | 'analyzing'>(
-    'off'
-  );
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
-  const cameraIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const processAudioChunk = useCallback(
-    async (event: BlobEvent) => {
-      const audioBlob = event.data;
-      if (audioBlob.size === 0) return;
-
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        const base64Audio = reader.result as string;
-        if (!base64Audio) return;
-
-        setMicStatus('analyzing');
-        try {
-          const result = await analyzeAudioAndMute({
-            audioDataUri: base64Audio,
-            voiceDetectionThreshold: sensitivity[0],
-            muteDuration: muteDuration,
+  const triggerKeyboardShortcut = (key: 'd' | 'e') => {
+    // Check if running in a Chrome extension context
+    if (typeof chrome !== "undefined" && chrome.tabs) {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0] && tabs[0].id) {
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            func: (k: string) => {
+              document.dispatchEvent(new KeyboardEvent('keydown', {
+                key: k,
+                code: `Key${k.toUpperCase()}`,
+                metaKey: true, // For Command key on Mac
+                ctrlKey: true,  // For Ctrl key on Windows/Linux
+                bubbles: true,
+                composed: true,
+              }));
+            },
+            args: [key]
           });
-          setMicStatus(result.shouldMute ? 'muted' : 'listening');
-        } catch (error) {
-          console.error('AI audio analysis failed:', error);
-          toast({
-            variant: 'destructive',
-            title: 'AI Error',
-            description: 'Could not analyze audio.',
-          });
-          setMicStatus('listening');
         }
-      };
-    },
-    [sensitivity, muteDuration, toast]
-  );
+      });
+    } else {
+      console.log(`Not in extension context. Would trigger Cmd+${key}`);
+    }
+  };
 
-  const startMicMonitoring = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
-      recorder.ondataavailable = processAudioChunk;
-      recorder.start(muteDuration * 1000);
-
-      setMicStatus('listening');
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
+  // Mic state
+  const [micEnabled, setMicEnabled] = useState(false);
+  const [muteDuration, setMuteDuration] = useState(5);
+  const { micStatus, startMuting, stopMuting, analyserNode } = useMicrophone({
+    silenceThreshold: muteDuration,
+    onMicError: (error) => {
       toast({
         variant: 'destructive',
-        title: 'Permission Denied',
-        description: 'Could not access the microphone.',
+        title: 'Mic Error',
+        description: error,
       });
       setMicEnabled(false);
+    },
+    onMute: () => {
+      triggerKeyboardShortcut('d');
+      toast({ title: 'Privacy Alert', description: 'Silence detected. Microphone muted.' });
     }
-  }, [muteDuration, processAudioChunk, toast]);
+  });
 
-  const stopMicMonitoring = useCallback(() => {
-    mediaRecorderRef.current?.stop();
-    micStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaRecorderRef.current = null;
-    micStreamRef.current = null;
-    setMicStatus('off');
-  }, []);
 
-  useEffect(() => {
-    if (micEnabled) {
-      startMicMonitoring();
+  // Camera state
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraOffDuration, setCameraOffDuration] = useState(5);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<'on' | 'off' | 'analyzing'>('off');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const absenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Mic Toggle
+  const handleMicToggle = (enabled: boolean) => {
+    setMicEnabled(enabled);
+    if (enabled) {
+      startMuting();
     } else {
-      stopMicMonitoring();
+      stopMuting();
     }
-    return () => stopMicMonitoring();
-  }, [micEnabled, startMicMonitoring, stopMicMonitoring]);
-
-  const analyzeCameraFeed = useCallback(async () => {
-    if (
-      !videoRef.current ||
-      !cameraStreamRef.current ||
-      videoRef.current.readyState < 2
-    )
-      return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-    const imageDataUri = canvas.toDataURL('image/jpeg');
-
-    setCameraStatus('analyzing');
-    try {
-      const result = await detectPersonAndTurnOffCamera({
-        videoDataUri: imageDataUri,
-        loggedInPersonDescription: personDescription,
-      });
-      if (!result.personDetected) {
-        setCameraEnabled(false);
-      } else {
-        setCameraStatus('on');
-      }
-    } catch (error) {
-      console.error('AI camera analysis failed:', error);
-      toast({
-        variant: 'destructive',
-        title: 'AI Error',
-        description: 'Could not analyze video feed.',
-      });
-      setCameraStatus('on');
-    }
-  }, [personDescription, toast]);
-
-  const startCameraMonitoring = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      cameraStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          setCameraStatus('on');
-          cameraIntervalRef.current = setInterval(analyzeCameraFeed, 10000);
-        };
-      }
-    } catch (err) {
-      console.error('Error accessing camera:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Permission Denied',
-        description: 'Could not access the camera.',
-      });
-      setCameraEnabled(false);
-    }
-  }, [analyzeCameraFeed, toast]);
+  };
 
   const stopCameraMonitoring = useCallback(() => {
-    if (cameraIntervalRef.current) clearInterval(cameraIntervalRef.current);
-    cameraIntervalRef.current = null;
-    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
-    cameraStreamRef.current = null;
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
+      analysisIntervalRef.current = null;
+    }
+    if (absenceTimerRef.current) {
+      clearTimeout(absenceTimerRef.current);
+      absenceTimerRef.current = null;
+    }
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
     setCameraStatus('off');
+    setHasCameraPermission(null);
   }, []);
 
+  const captureFrame = useCallback(() => {
+    if (!videoRef.current || !videoRef.current.srcObject || videoRef.current.paused || videoRef.current.ended || videoRef.current.videoWidth === 0) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg');
+  }, []);
+  
+  const analyzeCameraFeed = useCallback(async () => {
+    setCameraStatus(currentStatus => {
+        if (currentStatus === 'analyzing') {
+             return currentStatus;
+        }
+
+        const frame = captureFrame();
+        if (!frame) {
+            return currentStatus;
+        }
+        
+        (async () => {
+            try {
+                const result = await detectPersonAndTurnOffCamera({
+                    videoFrameDataUri: frame,
+                    referencePhotoDataUri: referencePhoto,
+                });
+
+                if (result && !result.personDetected) {
+                    if (!absenceTimerRef.current) {
+                        absenceTimerRef.current = setTimeout(() => {
+                            toast({ title: 'Privacy Alert', description: `You have been away for ${cameraOffDuration} seconds. Turning off camera.` });
+                            triggerKeyboardShortcut('e');
+                            setCameraEnabled(false); // This will trigger the cleanup effect
+                        }, cameraOffDuration * 1000);
+                    }
+                } else {
+                    if (absenceTimerRef.current) {
+                        clearTimeout(absenceTimerRef.current);
+                        absenceTimerRef.current = null;
+                    }
+                }
+            } catch (error) {
+                console.error('Error analyzing camera feed:', error);
+                toast({ variant: 'destructive', title: 'AI Error', description: 'Could not analyze video feed.' });
+            } finally {
+                setCameraStatus(prevStatus => prevStatus === 'analyzing' ? 'on' : prevStatus);
+            }
+        })();
+
+        return 'analyzing';
+    });
+}, [captureFrame, referencePhoto, cameraOffDuration, toast]);
+
+
+  // Effect to handle camera setup and teardown
   useEffect(() => {
-    if (cameraEnabled) {
-      startCameraMonitoring();
-    } else {
+    if (!cameraEnabled) {
       stopCameraMonitoring();
+      return;
     }
-    return () => stopCameraMonitoring();
-  }, [cameraEnabled, startCameraMonitoring, stopCameraMonitoring]);
+
+    let isMounted = true;
+
+    const startCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (!isMounted) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        setHasCameraPermission(true);
+        cameraStreamRef.current = stream;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.error("Video play failed:", e));
+        }
+
+        setCameraStatus('on');
+        
+        if (analysisIntervalRef.current) clearInterval(analysisIntervalRef.current);
+        analysisIntervalRef.current = setInterval(analyzeCameraFeed, 2000);
+
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings.',
+        });
+        setCameraEnabled(false);
+        setCameraStatus('off');
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      isMounted = false;
+      stopCameraMonitoring();
+    };
+  }, [cameraEnabled, analyzeCameraFeed, stopCameraMonitoring, toast]);
+
+  // Sync camera mic with auto-mute status
+  useEffect(() => {
+    if (cameraStreamRef.current) {
+      const audioTrack = cameraStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = micStatus !== 'muted';
+      }
+    }
+  }, [micStatus]);
+
 
   const micStatusInfo = {
     off: { icon: MicOff, text: 'Disabled', color: 'text-muted-foreground' },
-    listening: { icon: Mic, text: 'Listening', color: 'text-green-500' },
-    muted: { icon: MicOff, text: 'Muted', color: 'text-yellow-500' },
-    analyzing: {
-      icon: BrainCircuit,
-      text: 'Analyzing...',
-      color: 'text-blue-500 animate-pulse',
-    },
+    listening: { icon: Mic, text: 'Voice Detected', color: 'text-green-500 animate-pulse' },
+    muted: { icon: MicOff, text: 'Muted (Silence)', color: 'text-yellow-500' },
   };
 
   const cameraStatusInfo = {
     off: { icon: VideoOff, text: 'Camera Off', color: 'text-muted-foreground' },
-    on: { icon: Video, text: 'Camera On', color: 'text-green-500' },
+    on: { icon: Video, text: 'Camera On & Monitored', color: 'text-green-500' },
     analyzing: {
       icon: BrainCircuit,
       text: 'Analyzing...',
@@ -224,25 +258,19 @@ export function PrivacyControls() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Auto-Mute Microphone</CardTitle>
-            <Switch checked={micEnabled} onCheckedChange={setMicEnabled} />
+            <Switch checked={micEnabled} onCheckedChange={handleMicToggle} />
           </div>
           <CardDescription>
             Mute your mic automatically when no voice is detected.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="sensitivity">Voice Detection Sensitivity</Label>
-            <Slider
-              id="sensitivity"
-              min={0.1}
-              max={1}
-              step={0.1}
-              value={sensitivity}
-              onValueChange={setSensitivity}
-              disabled={!micEnabled}
-            />
-          </div>
+          {micEnabled && analyserNode && (
+            <div className="bg-secondary rounded-lg flex items-center justify-center overflow-hidden h-24">
+              <AudioVisualizer analyserNode={analyserNode} />
+            </div>
+
+          )}
           <div>
             <Label htmlFor="mute-duration">Mute after (seconds)</Label>
             <Input
@@ -251,7 +279,6 @@ export function PrivacyControls() {
               min="1"
               value={muteDuration}
               onChange={(e) => setMuteDuration(Number(e.target.value))}
-              disabled={!micEnabled}
             />
           </div>
         </CardContent>
@@ -276,35 +303,39 @@ export function PrivacyControls() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="person-description">Describe Yourself</Label>
-            <div className="flex items-center gap-2">
-              <User className="text-muted-foreground" />
-              <Input
-                id="person-description"
-                placeholder="e.g., person with glasses and a blue shirt"
-                value={personDescription}
-                onChange={(e) => setPersonDescription(e.target.value)}
-                disabled={!cameraEnabled}
-              />
-            </div>
-          </div>
           <div className="bg-secondary rounded-lg aspect-video flex items-center justify-center overflow-hidden">
-            {cameraStatus === 'off' ? (
-              <div className="text-muted-foreground flex flex-col items-center gap-2">
-                <VideoOff className="h-12 w-12" />
-                <p>Camera is off</p>
-              </div>
-            ) : (
-              <video
+            <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-full object-cover"
-              ></video>
+                className={`w-full h-full object-cover ${!cameraEnabled || cameraStatus === 'off' ? 'hidden' : ''}`}
+            ></video>
+            {(!cameraEnabled || cameraStatus === 'off') && (
+              <div className="text-muted-foreground flex flex-col items-center gap-2">
+                <VideoOff className="h-12 w-12" />
+                <p>Camera is off</p>
+              </div>
             )}
           </div>
+          <div className="space-y-2">
+             <Label htmlFor="camera-off-duration">Turn off after (seconds)</Label>
+            <Input
+              id="camera-off-duration"
+              type="number"
+              min="1"
+              value={cameraOffDuration}
+              onChange={(e) => setCameraOffDuration(Number(e.target.value))}
+            />
+          </div>
+           {hasCameraPermission === false && (
+              <Alert variant="destructive">
+                <AlertTitle>Camera Access Required</AlertTitle>
+                <AlertDescription>
+                  Please allow camera access to use this feature.
+                </AlertDescription>
+              </Alert>
+            )}
         </CardContent>
         <CardFooter>
           <div
