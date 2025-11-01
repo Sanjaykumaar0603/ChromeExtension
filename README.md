@@ -8,7 +8,7 @@ It intelligently manages your mic and camera, blurs sensitive screen areas, and 
 ## Current Features
 
 1. **Auto Privacy Control**  
-   - Automatically mutes your microphone or turns off your camera when no audio or face is detected during meetings (e.g., Google Meet, Zoom, Teams).  
+   - Automatically mutes your microphone when no voice is detected and automatically turns off your camera when the registered user's face is not detected during meetings (e.g., Google Meet, Zoom, Teams).  
 
 2. **Smart Screen Blur**  
    - Blur your entire screen or selectively hide sensitive areas by drawing a bounding box or clicking an element — perfect for screen sharing and presentations.  
@@ -147,7 +147,6 @@ Then load the `out` folder as unpacked to test the static build.
 5. Submit for review!
 
 ---
-
 ## Tagline
 
 > “Always on guard. Always aware.”
